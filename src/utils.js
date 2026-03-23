@@ -30,4 +30,6 @@ function parseZaloTags(text) {
     return { msg, styles };
 }
 
-module.exports = { getCurrentTime, parseZaloTags };
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+module.exports = { getCurrentTime, parseZaloTags, sleep };

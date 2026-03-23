@@ -94,10 +94,44 @@ async function initDB() {
         )
     `);
 
+    // ==========================================
+    // TẠO TABLES CHO QUIZ ADVANCED
+    // ==========================================
+    await runQuery(`
+        CREATE TABLE IF NOT EXISTS bot_answer_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            chat_id VARCHAR(255),
+            q_type VARCHAR(50),
+            is_correct TINYINT,
+            answered_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await runQuery(`
+        CREATE TABLE IF NOT EXISTS bot_daily_questions (
+            day DATE PRIMARY KEY,
+            questions TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await runQuery(`
+        CREATE TABLE IF NOT EXISTS bot_daily_results (
+            chat_id VARCHAR(255),
+            day DATE,
+            score INT DEFAULT 0,
+            current_index INT DEFAULT 0,
+            is_completed TINYINT DEFAULT 0,
+            completed_at DATETIME,
+            PRIMARY KEY (chat_id, day)
+        )
+    `);
+
     // Convert tất cả bảng sang UTF8MB4 để hỗ trợ tiếng Việt
     const tablesToConvert = [
         'bot_user_scores', 'bot_quiz_sessions', 'bot_question_history',
-        'bot_group_settings', 'bot_wordchain_state', 'bot_wordchain_history'
+        'bot_group_settings', 'bot_wordchain_state', 'bot_wordchain_history',
+        'bot_answer_history', 'bot_daily_questions', 'bot_daily_results'
     ];
     for (const table of tablesToConvert) {
         try { await runQuery(`ALTER TABLE ${table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}

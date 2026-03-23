@@ -8,9 +8,22 @@ async function getUserInfo(userId) { return await db.getQuery("SELECT * FROM bot
 async function changeLevel(userId, level) { await db.runQuery("UPDATE bot_user_scores SET level = ? WHERE chat_id = ?",[level, userId]); }
 async function changeMode(userId, mode) { await db.runQuery("UPDATE bot_user_scores SET mode = ? WHERE chat_id = ?",[mode, userId]); }
 
-async function updateUserAnswerStats(userId, isCorrect, sessionScoreBefore) {
+async function getAllUserIds() {
+    const rows = await db.allQuery("SELECT chat_id FROM bot_user_scores");
+    return rows.map(r => r.chat_id);
+}
+
+async function recordAnswer(userId, type, isCorrect) {
+    await db.runQuery("INSERT INTO bot_answer_history (chat_id, q_type, is_correct) VALUES (?, ?, ?)", [userId, type, isCorrect ? 1 : 0]);
+}
+
+async function updateUserAnswerStats(userId, isCorrect, sessionScoreBefore, qType = 'unknown') {
     const user = await getUserInfo(userId);
     if (!user) return null;
+
+    // Ghi lại lịch sử câu trả lời
+    await recordAnswer(userId, qType, isCorrect);
+
     let { max_score, current_streak, best_streak, total_questions, correct_answers, total_games } = user;
     total_questions += 1;
     let isNewRecord = false;
@@ -28,6 +41,63 @@ async function updateUserAnswerStats(userId, isCorrect, sessionScoreBefore) {
     return { isNewRecord, newScore, current_streak, max_score };
 }
 
+async function getUserStats(userId) {
+    const history = await db.allQuery("SELECT q_type, is_correct FROM bot_answer_history WHERE chat_id = ? ORDER BY answered_at DESC", [userId]);
+    if (!history || history.length === 0) return null;
+
+    const stats = {
+        stress: { total: 0, correct: 0 },
+        vocab: { total: 0, correct: 0 },
+        pronunciation: { total: 0, correct: 0 },
+        wordForm: { total: 0, correct: 0 },
+        lifetime: { total: 0, correct: 0 },
+        recent20: { total: 0, correct: 0 }
+    };
+
+    history.forEach((row, index) => {
+        const isCorrect = row.is_correct === 1;
+        const type = row.q_type;
+
+        stats.lifetime.total++;
+        if (isCorrect) stats.lifetime.correct++;
+
+        if (index < 20) {
+            stats.recent20.total++;
+            if (isCorrect) stats.recent20.correct++;
+        }
+
+        if (type === 'word stress') {
+            stats.stress.total++;
+            if (isCorrect) stats.stress.correct++;
+        } else if (type === 'vocabulary context') {
+            stats.vocab.total++;
+            if (isCorrect) stats.vocab.correct++;
+        } else if (type === 'pronunciation difference') {
+            stats.pronunciation.total++;
+            if (isCorrect) stats.pronunciation.correct++;
+        } else if (type === 'word form') {
+            stats.wordForm.total++;
+            if (isCorrect) stats.wordForm.correct++;
+        }
+    });
+
+    const getAcc = (s) => s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0;
+
+    return {
+        accuracy: {
+            stress: getAcc(stats.stress),
+            vocab: getAcc(stats.vocab),
+            pronunciation: getAcc(stats.pronunciation),
+            wordForm: getAcc(stats.wordForm)
+        },
+        trend: {
+            lifetime: getAcc(stats.lifetime),
+            recent: getAcc(stats.recent20),
+            diff: getAcc(stats.recent20) - getAcc(stats.lifetime)
+        }
+    };
+}
+
 async function getSession(threadId) {
     const row = await db.getQuery("SELECT chat_id, current_score, question_data, is_active FROM bot_quiz_sessions WHERE chat_id = ? AND is_active = 1",[threadId]);
     return row ? { ...row, question_data: row.question_data ? JSON.parse(row.question_data) : null } : null;
@@ -36,6 +106,102 @@ async function saveSession(threadId, currentScore, questionData) { await db.runQ
 async function endSession(threadId) { await db.runQuery("UPDATE bot_quiz_sessions SET is_active = 0 WHERE chat_id = ?", [threadId]); }
 async function getRecentKeywords(threadId, limit = 20) { const rows = await db.allQuery("SELECT keyword FROM bot_question_history WHERE chat_id = ? ORDER BY answered_at DESC LIMIT ?",[threadId, limit]); return rows.map(r => r.keyword); }
 async function saveKeyword(threadId, keyword) { await db.runQuery("INSERT INTO bot_question_history (chat_id, keyword) VALUES (?, ?)", [threadId, keyword]); }
+
+/**
+ * Dùng gợi ý: Loại bỏ 1 đáp án sai và trừ 1 điểm
+ * Phase 4, Task 3: Implement Hint Logic
+ */
+async function useHint(threadId) {
+    const session = await getSession(threadId);
+    if (!session || !session.question_data) {
+        return "⚠️ Bạn không có câu hỏi nào đang diễn ra để lấy gợi ý!";
+    }
+
+    const q = session.question_data;
+    const options = ['A', 'B', 'C', 'D'];
+    const wrongOptions = options.filter(opt => opt !== q.correct);
+    
+    // Pick a random wrong option
+    const randomWrong = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+
+    // Deduct 1 point from current score
+    session.current_score -= 1;
+
+    // Update session in DB
+    await saveSession(threadId, session.current_score, q);
+
+    return `💡 Gợi ý: Đáp án ${randomWrong} là sai! (-1 điểm)`;
+}
+
+/**
+ * Lấy danh sách 10 câu hỏi thử thách hàng ngày
+ * Phase 4, Task 4: Implement Daily Challenge Logic
+ */
+async function getDailyQuestions(threadId) {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const row = await db.getQuery("SELECT questions FROM bot_daily_questions WHERE day = ?", [today]);
+    
+    if (row) {
+        try {
+            return JSON.parse(row.questions);
+        } catch (e) {
+            console.error("❌ Lỗi parse JSON câu hỏi hàng ngày:", e);
+        }
+    }
+
+    // Nếu chưa có, tạo mới 10 câu
+    console.log(`[Daily] Đang tạo 10 câu hỏi cho ngày ${today}...`);
+    const questions = [];
+    const modes = ["word stress", "vocabulary context", "pronunciation difference", "word form"];
+    
+    for (let i = 0; i < 10; i++) {
+        // Xoay vòng các dạng bài để thử thách đa dạng
+        const mode = modes[i % modes.length];
+        const q = await generateQuestion('daily_system', 'B1', mode);
+        if (q) {
+            questions.push(q);
+        } else {
+            // Thử lại nếu lỗi
+            const qRetry = await generateQuestion('daily_system', 'B1', mode);
+            if (qRetry) questions.push(qRetry);
+        }
+    }
+
+    // Chỉ lưu nếu có đủ ít nhất một số câu (thường là 10)
+    if (questions.length >= 8) { 
+        await db.runQuery("INSERT INTO bot_daily_questions (day, questions) VALUES (?, ?) ON DUPLICATE KEY UPDATE questions = VALUES(questions)", [today, JSON.stringify(questions)]);
+        return questions;
+    }
+    
+    return questions.length > 0 ? questions : null;
+}
+
+/**
+ * Lấy trạng thái phiên chơi hàng ngày của người dùng
+ */
+async function getDailySession(userId, day) {
+    if (!day) day = new Date().toISOString().split('T')[0];
+    const row = await db.getQuery("SELECT * FROM bot_daily_results WHERE chat_id = ? AND day = ?", [userId, day]);
+    return row;
+}
+
+/**
+ * Cập nhật tiến độ thử thách hàng ngày
+ */
+async function updateDailySession(userId, day, score, currentIndex, isCompleted) {
+    if (!day) day = new Date().toISOString().split('T')[0];
+    const completedAt = isCompleted ? utils.getCurrentTime() : null;
+    
+    await db.runQuery(`
+        INSERT INTO bot_daily_results (chat_id, day, score, current_index, is_completed, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE 
+            score = VALUES(score), 
+            current_index = VALUES(current_index), 
+            is_completed = VALUES(is_completed),
+            completed_at = VALUES(completed_at)
+    `, [userId, day, score, currentIndex, isCompleted ? 1 : 0, completedAt]);
+}
 
 const getLevelBadge = (lvl) => { const map = { 'A1': '🌱', 'A2': '🌿', 'B1': '🌳', 'B2': '🔥', 'C1': '💎', 'C2': '👑' }; return map[lvl] || '🌳'; };
 const getRankTitle = (score) => score >= 500 ? "Grand Master 🐲" : score >= 200 ? "Master 🦁" : score >= 100 ? "Advanced 🐯" : score >= 50 ? "Intermediate 🐺" : score >= 10 ? "Beginner 🦊" : "Novice 🐰";
@@ -202,10 +368,31 @@ async function getPrefetchedQuestion(threadId, level, mode) {
     return q;
 }
 
+/**
+ * Lấy danh sách 10 người chơi có điểm cao nhất toàn cầu
+ * Phase 4, Task 5: Implement Leaderboard Logic
+ */
+async function getGlobalTop10() {
+    return await db.allQuery("SELECT chat_id, display_name, max_score FROM bot_user_scores ORDER BY max_score DESC LIMIT 10");
+}
+
+/**
+ * Lấy danh sách 10 người chơi có điểm cao nhất trong nhóm (dựa trên danh sách ID thành viên)
+ * Phase 4, Task 5: Implement Leaderboard Logic
+ */
+async function getGroupTop10(memberIds) {
+    if (!Array.isArray(memberIds) || memberIds.length === 0) return [];
+    const placeholders = memberIds.map(() => '?').join(',');
+    const query = `SELECT chat_id, display_name, max_score FROM bot_user_scores WHERE chat_id IN (${placeholders}) ORDER BY max_score DESC LIMIT 10`;
+    return await db.allQuery(query, memberIds);
+}
+
 module.exports = {
     upsertUser, getUserInfo, changeLevel, changeMode, updateUserAnswerStats,
-    getSession, saveSession, endSession, getRecentKeywords, saveKeyword,
+    recordAnswer, getUserStats, getAllUserIds,
+    getSession, saveSession, endSession, getRecentKeywords, saveKeyword, useHint,
+    getDailyQuestions, getDailySession, updateDailySession,
     getLevelBadge, getRankTitle, getStreakEmoji,
     generateQuestion, triggerPrefetch, getPrefetchedQuestion,
-    prefetchQueue
+    prefetchQueue, getGlobalTop10, getGroupTop10
 };

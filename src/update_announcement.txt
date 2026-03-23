@@ -1,0 +1,10 @@
+<b>🚀 BẢN CẬP NHẬT MỚI: NHIỀU TÍNH NĂNG HẤP DẪN!</b>
+
+Chào các bạn! Bot Quiz AI vừa được nâng cấp với các tính năng mới cực hot:
+
+🏆 <b>/leaderboard</b>: Xem bảng xếp hạng Top 10 thế giới hoặc ngay trong nhóm của bạn.
+💡 <b>/hint</b>: Gặp câu khó? Gõ /hint để loại ngay 1 đáp án sai (Chi phí: 1 điểm).
+📊 <b>/stats</b>: Xem thống kê chi tiết tỷ lệ đúng theo từng dạng bài và xu hướng tiến bộ của bạn.
+📅 <b>/daily</b>: Thử thách 10 câu hỏi cố định mỗi ngày dành cho tất cả mọi người. Cạnh tranh Top hàng ngày nào!
+
+Chúc các bạn học tập thật vui vẻ cùng Bot! ❤️
