@@ -1,158 +1,17 @@
 require('dotenv').config();
 const { Zalo, TextStyle, ThreadType, Reactions } = require('zca-js');
+const config = require('./src/config');
+const db = require('./src/db');
 const { OpenAI } = require('openai');
-const mysql = require('mysql2/promise');
 const werewolf = require('./werewolf/index.js');
-
-// ---------------------------------------------------------
-// 0. CƠ CHẾ XOAY VÒNG API KEYS & MODEL (CHỐNG RATE LIMIT)
-// ---------------------------------------------------------
-const API_KEYS = (process.env.GROQ_API_KEYS || "YOUR_GROQ_API_KEY").split(',').map(k => k.trim());
-let currentKeyIndex = 0;
-const AI_MODEL = "openai/gpt-oss-120b"; 
-
-// THIẾT LẬP ID ADMIN Ở ĐÂY HOẶC TRONG .ENV
-const ADMIN_ID = process.env.ADMIN_ID || "YOUR_ADMIN_ID"; 
-
-function getOpenAIClient() {
-    return new OpenAI({
-        baseURL: 'https://api.groq.com/openai/v1',
-        apiKey: API_KEYS[currentKeyIndex],
-    });
+const { AI_MODEL, ADMIN_ID, getCurrentKey, rotateKey } = config;
+const { run: runQuery, get: getQuery, all: allQuery, initDB } = db;
+function getOpenAIClient() { return new OpenAI({ baseURL: 'https://api.groq.com/openai/v1', apiKey: getCurrentKey() }); }
+async function executeWithRetry(name, fn, maxRetries) {
+  if(!maxRetries) maxRetries=5; var delay=1500;
+  for(var i=1;i<=maxRetries;i++) { try{return await fn()}catch(e){if(e.status===429||e.status===401)rotateKey();if(i===maxRetries)throw e;console.warn('['+name+'] retry '+i);await new Promise(function(r){setTimeout(r,delay)});delay*=1.5;}}
 }
 
-function rotateApiKey() {
-    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-    console.warn(`🔄[API Key] Đã xoay tua sang API Key thứ ${currentKeyIndex + 1}/${API_KEYS.length}`);
-}
-
-async function executeWithRetry(actionName, actionFn, maxRetries = 5) {
-    let delay = 1500;
-    for (let i = 1; i <= maxRetries; i++) {
-        try {
-            return await actionFn();
-        } catch (error) {
-            if (error.status === 429 || error.status === 401 || (error.message && error.message.includes('429'))) {
-                console.warn(`⚠️[${actionName}] Lỗi Rate Limit/Auth. Đang đổi API Key...`);
-                rotateApiKey();
-            }
-
-            if (i === maxRetries) {
-                console.error(`❌[${actionName}] Thất bại hoàn toàn sau ${maxRetries} lần thử:`, error.message);
-                throw error;
-            }
-            console.warn(`⏳ [${actionName}] Thử lại lần ${i}/${maxRetries} sau ${delay}ms... (${error.message})`);
-            await new Promise(res => setTimeout(res, delay));
-            delay *= 1.5;
-        }
-    }
-}
-
-// ---------------------------------------------------------
-// 1. CẤU HÌNH DATABASE MYSQL
-// ---------------------------------------------------------
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
-    charset: 'utf8mb4',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
-
-pool.getConnection()
-    .then(() => console.log("✅ Đã kết nối cơ sở dữ liệu MySQL thành công!"))
-    .catch((err) => console.error("❌ Lỗi kết nối MySQL:", err.message));
-
-const runQuery = async (query, params = []) => { const [result] = await pool.execute(query, params); return result; };
-const getQuery = async (query, params =[]) => { const [rows] = await pool.execute(query, params); return rows[0] || null; };
-const allQuery = async (query, params = []) => { const [rows] = await pool.execute(query, params); return rows; };
-
-async function initDB() {
-    // Tables cho Quiz AI
-    await runQuery(`
-        CREATE TABLE IF NOT EXISTS bot_user_scores (
-            chat_id         VARCHAR(255) PRIMARY KEY,
-            display_name    VARCHAR(255) DEFAULT 'Nguoi dung',
-            max_score       INT DEFAULT 0,
-            total_games     INT DEFAULT 0,
-            last_played     DATETIME,
-            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-            level           VARCHAR(10) DEFAULT 'B1',
-            current_streak  INT DEFAULT 0,
-            best_streak     INT DEFAULT 0,
-            correct_answers INT DEFAULT 0,
-            total_questions INT DEFAULT 0,
-            mode            VARCHAR(50) DEFAULT 'random'
-        )
-    `);
-
-    try { await runQuery("ALTER TABLE bot_user_scores ADD COLUMN mode VARCHAR(50) DEFAULT 'random'"); } catch (error) {}
-
-    await runQuery(`
-        CREATE TABLE IF NOT EXISTS bot_quiz_sessions (
-            chat_id       VARCHAR(255) PRIMARY KEY,
-            current_score INT DEFAULT 0,
-            question_data TEXT,
-            is_active     TINYINT DEFAULT 1,
-            started_at    DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-    
-    await runQuery(`
-        CREATE TABLE IF NOT EXISTS bot_question_history (
-            id          INT AUTO_INCREMENT PRIMARY KEY,
-            chat_id     VARCHAR(255),
-            keyword     VARCHAR(255),
-            answered_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    // ==========================================
-    // TẠO TABLES CHO GAME NỐI TỪ (WORD CHAIN)
-    // ==========================================
-    await runQuery(`
-        CREATE TABLE IF NOT EXISTS bot_group_settings (
-            group_id VARCHAR(255) PRIMARY KEY,
-            wordchain_enabled TINYINT DEFAULT 0,
-            wordchain_mode VARCHAR(10) DEFAULT 'vi'
-        )
-    `);
-
-    try { await runQuery("ALTER TABLE bot_group_settings ADD COLUMN wordchain_mode VARCHAR(10) DEFAULT 'vi'"); } catch (e) {}
-
-    await runQuery(`
-        CREATE TABLE IF NOT EXISTS bot_wordchain_state (
-            group_id VARCHAR(255) PRIMARY KEY,
-            current_word VARCHAR(255),
-            last_player_id VARCHAR(255)
-        )
-    `);
-
-    await runQuery(`
-        CREATE TABLE IF NOT EXISTS bot_wordchain_history (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            group_id VARCHAR(255),
-            word VARCHAR(255),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    // Convert tất cả bảng sang UTF8MB4 để hỗ trợ tiếng Việt
-    const tablesToConvert = [
-        'bot_user_scores', 'bot_quiz_sessions', 'bot_question_history',
-        'bot_group_settings', 'bot_wordchain_state', 'bot_wordchain_history'
-    ];
-    for (const table of tablesToConvert) {
-        try { await runQuery(`ALTER TABLE ${table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}
-    }
-}
-
-// ---------------------------------------------------------
-// 2. HELPER CƠ SỞ DỮ LIỆU & LOGIC TRÒ CHƠI NỐI TỪ
-// ---------------------------------------------------------
 function getCurrentTime() { return new Date().toISOString().replace('T', ' ').substring(0, 19); }
 
 // --- Helpers Quiz AI ---
@@ -224,6 +83,7 @@ async function clearWordChainGame(groupId) {
     await runQuery("DELETE FROM bot_wordchain_history WHERE group_id = ?", [groupId]);
 }
 // --- Vietnamese Word Lookup via tratu.soha.vn API ---
+const wordValidationCache = new Map();
 const SOHA_HEADERS = {
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "accept-language": "vi,en;q=0.9",
@@ -535,7 +395,9 @@ QUY TẮC ĐỊNH DẠNG ĐẦU RA JSON (Bạn phải theo đúng cấu trúc n�
             }
         }
         return q;
-    } catch (error) { console.error("❌ Lỗi AI hoặc Parse JSON:", error.message); return null; }
+    } catch (error) {
+        if(retryCount<5){var d=Math.min(30000,1000*Math.pow(2,retryCount));console.warn("[Bot] Reconnect in "+d+"ms...");setTimeout(function(){startBot(retryCount+1)},d);return;}
+        console.error("❌ Lỗi AI hoặc Parse JSON:", error.message); return null; }
 }
 
 // --- PARSE THẺ HTML ĐỂ ĐỊNH DẠNG ZALO ---
@@ -607,7 +469,8 @@ const processingLock = new Set();
 const lastMessageTime = new Map();
 const lastWarningTime = new Map();
 
-async function startBot() {
+async function startBot(retryCount) {
+    if(!retryCount) retryCount=0;
     await initDB();
 
     try {
