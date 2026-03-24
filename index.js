@@ -652,7 +652,6 @@ async function handleMessage(api, message) {
         else await sendParsedMsg(`👋 Chào <b>${displayName}</b>! Gõ /quiz để chơi.`);
     }
 }
-}
 
 // ---------------------------------------------------------
 // RECONNECT LOGIC (PHASE 3, TASK 6, STEP 2)
