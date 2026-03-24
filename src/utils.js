@@ -4,9 +4,9 @@ function getCurrentTime() {
     return new Date().toISOString().replace('T', ' ').substring(0, 19); 
 }
 
-function parseZaloTags(text) {
+function parseZaloTags(text, defaultFontSize = 15) {
     let msg = ""; let styles =[]; let tagStack =[];
-    const regex = /<\/?(u|b|green|red)>/g;
+    const regex = /<\/?(u|b|green|red|small|big)>/g;
     let match; let lastIndex = 0;
     while ((match = regex.exec(text)) !== null) {
         msg += text.substring(lastIndex, match.index);
@@ -16,8 +16,13 @@ function parseZaloTags(text) {
                 if (tagStack[i].tag === tag) {
                     const start = tagStack[i].start; const len = msg.length - start;
                     if (len > 0) {
-                        let st; if (tag === 'u') st = TextStyle.Underline; if (tag === 'b') st = TextStyle.Bold;
-                        if (tag === 'green') st = TextStyle.Green; if (tag === 'red') st = TextStyle.Red;
+                        let st;
+                        if (tag === 'u') st = TextStyle.Underline;
+                        if (tag === 'b') st = TextStyle.Bold;
+                        if (tag === 'green') st = TextStyle.Green;
+                        if (tag === 'red') st = TextStyle.Red;
+                        if (tag === 'small') st = TextStyle.Small;
+                        if (tag === 'big') st = TextStyle.Big;
                         styles.push({ start, len, st });
                     }
                     tagStack.splice(i, 1); break;
@@ -27,7 +32,17 @@ function parseZaloTags(text) {
         lastIndex = regex.lastIndex;
     }
     msg += text.substring(lastIndex);
-    return { msg, styles };
+    return {
+        msg,
+        styles,
+        propertyExt: {
+            size: defaultFontSize,
+            color: 0,
+            type: 0,
+            subType: 0,
+            ext: ""
+        }
+    };
 }
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));

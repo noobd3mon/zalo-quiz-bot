@@ -63,7 +63,11 @@ async function handleMessage(api, message) {
 
     const sendParsedMsg = async (msgText) => {
         try {
-            const payload = utils.parseZaloTags(msgText);
+            const botCfg = config.BOT_CONFIG || { fontSize: 15, signature: "", includeSignature: false };
+            if (botCfg.includeSignature && botCfg.signature) {
+                msgText += `\n\n<small>${botCfg.signature}</small>`;
+            }
+            const payload = utils.parseZaloTags(msgText, botCfg.fontSize);
             await ai.executeWithRetry("Zalo_SendMessage", () => api.sendMessage(payload, threadId, msgType), 5);
         } catch(e) { console.error("❌ Lỗi gửi tin nhắn:", e); }
     };
@@ -143,10 +147,16 @@ async function handleMessage(api, message) {
         let successCount = 0;
         let failCount = 0;
 
+        const botCfg = config.BOT_CONFIG || { fontSize: 15, signature: "", includeSignature: false };
+        let finalBroadcastText = messageText;
+        if (botCfg.includeSignature && botCfg.signature) {
+            finalBroadcastText += `\n\n<small>${botCfg.signature}</small>`;
+        }
+
         for (let i = 0; i < targets.length; i++) {
             const targetId = targets[i];
             try {
-                const payload = utils.parseZaloTags(messageText);
+                const payload = utils.parseZaloTags(finalBroadcastText, botCfg.fontSize);
                 await ai.executeWithRetry("Zalo_Broadcast", () => api.sendMessage(payload, targetId, ThreadType.User), 3);
                 successCount++;
             } catch (error) {

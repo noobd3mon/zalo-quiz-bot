@@ -7,12 +7,17 @@ module.exports = {
     DB: {
         host: process.env.DB_HOST,
         user: process.env.DB_USER,
-        password: process.env.DB_PASS,
+        password: process.env.DB_PASS || process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
     },
     ZALO: {
         cookie: process.env.ZALO_COOKIE,
         imei: process.env.ZALO_IMEI,
         userAgent: process.env.ZALO_USER_AGENT
+    },
+    BOT_CONFIG: {
+        fontSize: 15,
+        signature: "Coded by Lò Hiếu Kỳ ❤️",
+        includeSignature: true
     }
 };
