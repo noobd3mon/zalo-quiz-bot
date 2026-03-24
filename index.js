@@ -61,10 +61,10 @@ async function handleMessage(api, message) {
     const args = text_lower.split(/\s+/);
     const command = args[0]; 
 
-    const sendParsedMsg = async (msgText) => {
+    const sendParsedMsg = async (msgText, skipSignature = false) => {
         try {
             const botCfg = config.BOT_CONFIG || { fontSize: 15, signature: "", includeSignature: false };
-            if (botCfg.includeSignature && botCfg.signature) {
+            if (!skipSignature && botCfg.includeSignature && botCfg.signature) {
                 msgText += `\n\n<small>${botCfg.signature}</small>`;
             }
             const payload = utils.parseZaloTags(msgText, botCfg.fontSize);
@@ -229,18 +229,18 @@ async function handleMessage(api, message) {
                 wordchain.voteskipMap.delete(threadId);
                 wordchain.wordDefinitionCache.delete(threadId);
                 if (isVietnamese) {
-                    return await sendParsedMsg("<green>✅ Đã BẬT game Nối Từ Tiếng Việt trong nhóm này!</green>\n\n📖 <b>Luật chơi:</b>\n• Gõ từ 2 âm tiết (ví dụ: \"bắt đầu\")\n• Từ tiếp theo phải bắt đầu bằng âm tiết cuối của từ trước\n  VD: bắt <b>đầu</b> → <b>đầu</b> tiên → ...\n• Không nối 2 lần liên tiếp\n• Không trùng từ đã dùng\n\n⌨️ Lệnh: /nghia | /voteskip | /forceskip\n\n👉 Ai đó hãy bắt đầu bằng cách gõ 1 từ tiếng Việt 2 âm tiết!");
+                    return await sendParsedMsg("<green>✅ Đã BẬT game Nối Từ Tiếng Việt trong nhóm này!</green>\n\n📖 <b>Luật chơi:</b>\n• Gõ từ 2 âm tiết (ví dụ: \"bắt đầu\")\n• Từ tiếp theo phải bắt đầu bằng âm tiết cuối của từ trước\n  VD: bắt <b>đầu</b> → <b>đầu</b> tiên → ...\n• Không nối 2 lần liên tiếp\n• Không trùng từ đã dùng\n\n⌨️ Lệnh: /nghia | /voteskip | /forceskip\n\n👉 Ai đó hãy bắt đầu bằng cách gõ 1 từ tiếng Việt 2 âm tiết!", true);
                 } else {
-                    return await sendParsedMsg("<green>✅ Đã BẬT game Nối Từ Tiếng Anh trong nhóm này!</green>\n\n📖 <b>Luật chơi:</b>\n• Gõ 1 từ tiếng Anh (ví dụ: hello)\n• Từ tiếp theo phải bắt đầu bằng chữ cái cuối của từ trước\n  VD: hell<b>o</b> → <b>o</b>pen → ope<b>n</b> → ...\n• Không nối 2 lần liên tiếp\n• Không trùng từ đã dùng\n\n⌨️ Lệnh: /nghia | /voteskip | /forceskip\n\n👉 Ai đó hãy bắt đầu bằng cách gõ 1 từ tiếng Anh!");
+                    return await sendParsedMsg("<green>✅ Đã BẬT game Nối Từ Tiếng Anh trong nhóm này!</green>\n\n📖 <b>Luật chơi:</b>\n• Gõ 1 từ tiếng Anh (ví dụ: hello)\n• Từ tiếp theo phải bắt đầu bằng chữ cái cuối của từ trước\n  VD: hell<b>o</b> → <b>o</b>pen → ope<b>n</b> → ...\n• Không nối 2 lần liên tiếp\n• Không trùng từ đã dùng\n\n⌨️ Lệnh: /nghia | /voteskip | /forceskip\n\n👉 Ai đó hãy bắt đầu bằng cách gõ 1 từ tiếng Anh!", true);
                 }
             } else if (action === 'off') {
                 await wordchain.setWordChainEnabled(threadId, false);
                 await wordchain.clearWordChainGame(threadId);
                 wordchain.voteskipMap.delete(threadId);
                 wordchain.wordDefinitionCache.delete(threadId);
-                return await sendParsedMsg("<red>✅ Đã TẮT game Nối từ trong nhóm này.</red>");
+                return await sendParsedMsg("<red>✅ Đã TẮT game Nối từ trong nhóm này.</red>", true);
             } else {
-                return await sendParsedMsg(`⚠️ Cú pháp: ${command} on hoặc off`);
+                return await sendParsedMsg(`⚠️ Cú pháp: ${command} on hoặc off`, true);
             }
         }
 
@@ -390,11 +390,43 @@ async function handleMessage(api, message) {
         return;
     }
 
-    const formatQuestionString = (q, score, userLvl) => {
+    // ---------------------------------------------------------
+    // REVIEW MODE SESSIONS
+    // ---------------------------------------------------------
+    if (!global.reviewSessions) global.reviewSessions = new Map();
+
+    const formatQuestionString = (q, score, userLvl, isReview = false) => {
         const typeNames = { "stress": "🔊 Trọng âm", "word stress": "🔊 Trọng âm", "vocabulary": "📚 Từ vựng", "vocabulary context": "📚 Từ vựng", "pronunciation": "🗣️ Phát âm", "pronunciation difference": "🗣️ Phát âm", "word form": "📝 Chia dạng từ" };
         const typeName = typeNames[q.type] || "📝 Bài tập";
-        const o = q.options; const badge = quiz.getLevelBadge(userLvl);
-        return `<b>━━━━━━━━━━━━━━━━━━━━\n📌 Dạng: ${typeName}\n⭐ Điểm: ${score} | Mức: ${userLvl} ${badge}\n━━━━━━━━━━━━━━━━━━━━</b>\n\n❓ ${q.question}\n\n   A. ${o.A}\n   B. ${o.B}\n   C. ${o.C}\n   D. ${o.D}\n\n✏️ Gõ A, B, C hoặc D để trả lời`;
+        const o = q.options; 
+        const badge = quiz.getLevelBadge(userLvl);
+        
+        let header = isReview 
+            ? `<b>🗂️ CHẾ ĐỘ ÔN TẬP (FLASHCARD)</b>\n━━━━━━━━━━━━━━━━━━━━`
+            : `<b>━━━━━━━━━━━━━━━━━━━━\n📌 Dạng: ${typeName}\n⭐ Điểm: ${score} | Mức: ${userLvl} ${badge}\n━━━━━━━━━━━━━━━━━━━━</b>`;
+            
+        return `${header}\n\n❓ ${q.question}\n\n   A. ${o.A}\n   B. ${o.B}\n   C. ${o.C}\n   D. ${o.D}\n\n✏️ Gõ A, B, C hoặc D để trả lời`;
+    };
+
+    const sendCorrectFeedback = async (displayName, answer, explanation, score, isNewRecord, streak) => {
+        const recordTag = isNewRecord ? "\n<green>✨ <b>CHÚC MỪNG! BẠN VỪA PHÁ KỶ LỤC CỦA CHÍNH MÌNH!</b> ✨</green>" : "";
+        const strkE = quiz.getStreakEmoji(streak);
+        const msg = `<green>✨ <b>CHÍNH XÁC TUYỆT ĐỐI!</b> ✨</green>
+━━━━━━━━━━━━━━━━━━━━
+🎁 <b>Phần thưởng:</b> +1đ | 🔥 <b>Chuỗi:</b> ${streak} ${strkE}
+📖 <b>Giải thích:</b> ${explanation}${recordTag}
+⭐ <b>Tổng điểm:</b> ${score}`;
+        return await sendParsedMsg(msg);
+    };
+
+    const sendIncorrectFeedback = async (displayName, correctAnswer, explanation, score) => {
+        const msg = `<red>❌ <b>TIẾC QUÁ, SAI MẤT RỒI...</b></red>
+━━━━━━━━━━━━━━━━━━━━
+💡 <b>Đáp án đúng là:</b> <b>${correctAnswer}</b>
+📖 <b>Giải thích:</b> ${explanation}
+📝 <i>Câu này đã được lưu vào <b>/review</b> để bạn ôn lại!</i>
+📊 <b>Điểm hiện tại:</b> ${score}`;
+        return await sendParsedMsg(msg);
     };
 
     let user = await quiz.getUserInfo(userId);
@@ -404,6 +436,7 @@ async function handleMessage(api, message) {
 
     if (text_lower.startsWith("/")) {
         if (["/quiz", "/q"].includes(command)) {
+            global.reviewSessions.delete(threadId);
             let session = await quiz.getSession(threadId);
             let current_score = session ? session.current_score : 0;
             if (session && session.question_data) return await sendParsedMsg("⚠️ Bạn còn câu hỏi chưa trả lời!\n\n" + formatQuestionString(session.question_data, current_score, currentLevel));
@@ -413,6 +446,17 @@ async function handleMessage(api, message) {
             await quiz.saveSession(threadId, current_score, q); await quiz.saveKeyword(threadId, q.keyword || q.question.substring(0, 30));
             return await sendParsedMsg(formatQuestionString(q, current_score, currentLevel));
         } 
+        else if (command === "/review") {
+            if (isGroup) return await sendParsedMsg("❌ Chế độ Review chỉ hoạt động trong tin nhắn riêng!");
+            const card = await quiz.getReviewCard(userId);
+            if (!card) {
+                return await sendParsedMsg("✨ <b>TUYỆT VỜI!</b>\nBạn không có câu hỏi nào cần ôn tập cả. Hãy tiếp tục chơi /quiz nhé!");
+            }
+            const count = await quiz.getReviewCount(userId);
+            global.reviewSessions.set(threadId, card);
+            let msg = `🗂️ <b>CHẾ ĐỘ ÔN TẬP (FLASHCARD)</b>\n━━━━━━━━━━━━━━━━━━━━\nBạn còn <b>${count}</b> câu cần chinh phục.\n\n` + formatQuestionString(card.question, 0, currentLevel, true);
+            return await sendParsedMsg(msg);
+        }
         else if (["/level", "/l"].includes(command)) {
             const newLevel = args[1] ? args[1].toUpperCase() : ''; const validLevels =['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
             if (!validLevels.includes(newLevel)) return await sendParsedMsg(`⚠️ Chọn đúng: A1-C2`);
@@ -463,6 +507,7 @@ async function handleMessage(api, message) {
             return await sendParsedMsg(hintMsg);
         }
         else if (command === "/daily") {
+            global.reviewSessions.delete(threadId);
             const today = new Date().toISOString().split('T')[0];
             const dailyQuestions = await quiz.getDailyQuestions(threadId);
             if (!dailyQuestions || dailyQuestions.length === 0) return await sendParsedMsg("❌ Không thể khởi tạo thử thách hàng ngày. Thử lại sau!");
@@ -475,16 +520,46 @@ async function handleMessage(api, message) {
                 dailySession = { score: 0, current_index: 0 };
             }
             const q = dailyQuestions[dailySession.current_index];
-            return await sendParsedMsg(`🔥 <b>BẮT ĐẦU THỬ THÁCH HÀNG NGÀY (10 CÂU)</b>\n\n📌 Câu hỏi ${dailySession.current_index + 1}/10\n\n${formatQuestionString(q, dailySession.score, currentLevel)}`);
+            return await sendParsedMsg(`🔥 <b>BẮT ĐẦU THỬ THÁCH HÀNG NGÀY (10 CÂU)</b>\n\n📌 Câu hỏi ${dailySession.current_index + 1}/10\n\n` + formatQuestionString(q, dailySession.score, currentLevel));
         }
         else if (["/help", "/h"].includes(command)) {
-            return await sendParsedMsg(`Lệnh: /quiz, /level, /mode, /score, /stats, /top, /daily, /hint, /reset, /help`);
+            const helpMsg = `<b>🌟 HƯỚNG DẪN SỬ DỤNG BOT 🌟</b>
+━━━━━━━━━━━━━━━━━━━━
+
+<b>📚 CHINH PHỤC TIẾNG ANH (QUIZ)</b>
+🔹 <b>/quiz</b> (hoặc <b>/q</b>): Nhận 1 câu hỏi mới.
+🔹 <b>/daily</b>: Thử thách 10 câu hàng ngày.
+🔹 <b>/review</b>: Ôn lại những câu bạn làm sai. (MỚI ✨)
+🔹 <b>/hint</b>: Nhận gợi ý (tốn 2đ).
+🔹 <b>/level [A1-C2]</b>: Đổi trình độ (VD: /level B2).
+🔹 <b>/mode [tên]</b>: Đổi dạng bài (random, tuvung, trongam, phatam, wordform).
+🔹 <b>/reset</b> (hoặc <b>/r</b>): Hủy câu hiện tại.
+
+<b>🎮 GAME NỐI TỪ (WORD CHAIN)</b>
+🔹 <b>/noitu on/off</b>: Bật/tắt Nối từ Tiếng Việt.
+🔹 <b>/wc on/off</b>: Bật/tắt Nối từ Tiếng Anh.
+🔹 <b>/nghia</b>: Xem giải nghĩa từ hiện tại.
+🔹 <b>/voteskip</b>: Vote bỏ qua từ khó.
+
+<b>🐺 GAME MA SÓI (WEREWOLF)</b>
+🔹 <b>/ww create</b>: Tạo phòng chơi mới.
+🔹 <b>/j</b> (hoặc <b>/join</b>): Tham gia vào phòng.
+🔹 <b>/start</b>: Bắt đầu trò chơi.
+
+<b>📊 THỐNG KÊ & XẾP HẠNG</b>
+🔹 <b>/score</b> (hoặc <b>/s</b>): Xem hồ sơ & chuỗi thắng.
+🔹 <b>/stats</b>: Thống kê tỉ lệ đúng chi tiết.
+🔹 <b>/top</b>: Bảng xếp hạng 10 "siêu nhân".
+
+<small>Chúc bạn học tập và giải trí vui vẻ! ❤️</small>`;
+            return await sendParsedMsg(helpMsg);
         }
         else if (["/reset", "/r"].includes(command)) {
+            global.reviewSessions.delete(threadId);
             const session = await quiz.getSession(threadId);
             if (session) { 
                 const qType = session.question_data ? session.question_data.type : 'unknown';
-                await quiz.updateUserAnswerStats(userId, false, session.current_score, qType); 
+                await quiz.updateUserAnswerStats(userId, false, session.current_score, qType, session.question_data); 
                 await quiz.endSession(threadId); quiz.triggerPrefetch(threadId, currentLevel, currentMode); 
                 return await sendParsedMsg(`🔄 Đã reset!`); 
             }
@@ -494,6 +569,26 @@ async function handleMessage(api, message) {
     }
 
     if (["a", "b", "c", "d"].includes(text_lower)) {
+        // --- REVIEW MODE HANDLING ---
+        if (global.reviewSessions.has(threadId)) {
+            const card = global.reviewSessions.get(threadId);
+            const q = card.question;
+            const answer = text_lower.toUpperCase();
+            const correct = q.correct.toUpperCase().trim();
+            
+            if (answer === correct) {
+                ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.HEART, message), 3).catch(()=>{});
+                await quiz.markReviewCorrect(card.id);
+                global.reviewSessions.delete(threadId);
+                await sendParsedMsg(`<green>✨ <b>XUẤT SẮC!</b> Bạn đã thuộc câu này.</green>\n📖 Giải thích: ${q.explanation}\n\n👉 Gõ <b>/review</b> để tiếp tục ôn tập.`);
+            } else {
+                ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.NO, message), 3).catch(()=>{});
+                await sendParsedMsg(`<red>❌ <b>VẪN CHƯA ĐÚNG RỒI...</b></red>\n💡 Đáp án đúng là: <b>${correct}</b>\n📖 Giải thích: ${q.explanation}\n\n<i>Đừng nản chí, hãy thử lại câu khác nhé!</i>\n👉 Gõ <b>/review</b> để tiếp tục.`);
+                global.reviewSessions.delete(threadId);
+            }
+            return;
+        }
+
         // --- DAILY CHALLENGE HANDLING ---
         const today = new Date().toISOString().split('T')[0];
         const dailySession = await quiz.getDailySession(userId, today);
@@ -513,17 +608,18 @@ async function handleMessage(api, message) {
                 
                 if (isCorrect) {
                     ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.HEART, message), 3).catch(()=>{});
-                    await sendParsedMsg(`<green>✅ CHÍNH XÁC! (+1đ)</green>\n📖 Giải thích: ${q.explanation}\n📊 Tiến độ: ${nextIndex}/${dailyQuestions.length}`);
+                    await sendCorrectFeedback(displayName, answer, q.explanation, newScore, false, 0);
                 } else {
                     ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.NO, message), 3).catch(()=>{});
-                    await sendParsedMsg(`<red>❌ Sai rồi! Đáp án là ${correct}.</red>\n📖 Giải thích: ${q.explanation}\n📊 Tiến độ: ${nextIndex}/${dailyQuestions.length}`);
+                    await quiz.recordAnswer(userId, q.type, false, q);
+                    await sendIncorrectFeedback(displayName, correct, q.explanation, newScore);
                 }
 
                 if (isCompleted) {
                     return await sendParsedMsg(`🏁 <b>HOÀN THÀNH THỬ THÁCH NGÀY!</b>\n🏆 Tổng điểm của bạn: <b>${newScore}/${dailyQuestions.length}</b>\n👉 Hãy quay lại vào ngày mai nhé!`);
                 } else {
                     const nextQ = dailyQuestions[nextIndex];
-                    return await sendParsedMsg(`🔥 <b>Câu hỏi ${nextIndex + 1}:</b>\n\n${formatQuestionString(nextQ, newScore, currentLevel)}`);
+                    return await sendParsedMsg(`🔥 <b>Câu hỏi ${nextIndex + 1}:</b>\n\n` + formatQuestionString(nextQ, newScore, currentLevel));
                 }
             }
         }
@@ -536,17 +632,18 @@ async function handleMessage(api, message) {
         const answer = text_lower.toUpperCase();
         if (answer === correct) {
             ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.HEART, message), 3).catch(()=>{});
-            const stats = await quiz.updateUserAnswerStats(userId, true, current_score, q.type); await quiz.saveSession(threadId, stats.newScore, null); 
+            const stats = await quiz.updateUserAnswerStats(userId, true, current_score, q.type, q); await quiz.saveSession(threadId, stats.newScore, null); 
+            await sendCorrectFeedback(displayName, answer, q.explanation, stats.newScore, stats.isNewRecord, stats.current_streak);
+            
             const nextQ = await quiz.getPrefetchedQuestion(threadId, currentLevel, currentMode);
-            await sendParsedMsg(`<green>✅ CHÍNH XÁC! +1đ.</green>\n📖 Giải thích: ${q.explanation}\n⭐ Tổng: ${stats.newScore}`);
             if (nextQ) {
                 await quiz.saveSession(threadId, stats.newScore, nextQ); await quiz.saveKeyword(threadId, nextQ.keyword || nextQ.question.substring(0, 30));
                 await sendParsedMsg(formatQuestionString(nextQ, stats.newScore, currentLevel));
             }
         } else {
             ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.NO, message), 3).catch(()=>{});
-            const stats = await quiz.updateUserAnswerStats(userId, false, current_score, q.type); await quiz.endSession(threadId);
-            await sendParsedMsg(`<red>❌ Sai rồi! Đáp án là ${correct}.</red>\n📖 Giải thích: ${q.explanation}\n📊 Điểm: ${current_score}`);
+            const stats = await quiz.updateUserAnswerStats(userId, false, current_score, q.type, q); await quiz.endSession(threadId);
+            await sendIncorrectFeedback(displayName, correct, q.explanation, current_score);
             quiz.triggerPrefetch(threadId, currentLevel, currentMode); 
         }
     } else {
@@ -554,6 +651,7 @@ async function handleMessage(api, message) {
         if (session && session.question_data) await sendParsedMsg(`<red>⚠️ Vui lòng chỉ gõ A, B, C hoặc D!</red>`);
         else await sendParsedMsg(`👋 Chào <b>${displayName}</b>! Gõ /quiz để chơi.`);
     }
+}
 }
 
 // ---------------------------------------------------------

@@ -103,9 +103,12 @@ async function initDB() {
             chat_id VARCHAR(255),
             q_type VARCHAR(50),
             is_correct TINYINT,
+            question_json TEXT,
             answered_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    try { await runQuery("ALTER TABLE bot_answer_history ADD COLUMN question_json TEXT"); } catch (e) {}
 
     await runQuery(`
         CREATE TABLE IF NOT EXISTS bot_daily_questions (

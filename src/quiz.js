@@ -13,16 +13,17 @@ async function getAllUserIds() {
     return rows.map(r => r.chat_id);
 }
 
-async function recordAnswer(userId, type, isCorrect) {
-    await db.runQuery("INSERT INTO bot_answer_history (chat_id, q_type, is_correct) VALUES (?, ?, ?)", [userId, type, isCorrect ? 1 : 0]);
+async function recordAnswer(userId, type, isCorrect, questionData = null) {
+    const qJson = (!isCorrect && questionData) ? JSON.stringify(questionData) : null;
+    await db.runQuery("INSERT INTO bot_answer_history (chat_id, q_type, is_correct, question_json) VALUES (?, ?, ?, ?)", [userId, type, isCorrect ? 1 : 0, qJson]);
 }
 
-async function updateUserAnswerStats(userId, isCorrect, sessionScoreBefore, qType = 'unknown') {
+async function updateUserAnswerStats(userId, isCorrect, sessionScoreBefore, qType = 'unknown', questionData = null) {
     const user = await getUserInfo(userId);
     if (!user) return null;
 
     // Ghi lại lịch sử câu trả lời
-    await recordAnswer(userId, qType, isCorrect);
+    await recordAnswer(userId, qType, isCorrect, questionData);
 
     let { max_score, current_streak, best_streak, total_questions, correct_answers, total_games } = user;
     total_questions += 1;
@@ -39,6 +40,33 @@ async function updateUserAnswerStats(userId, isCorrect, sessionScoreBefore, qTyp
     
     await db.runQuery(`UPDATE bot_user_scores SET max_score = ?, current_streak = ?, best_streak = ?, total_questions = ?, correct_answers = ?, total_games = ?, last_played = ? WHERE chat_id = ?`,[max_score, current_streak, best_streak, total_questions, correct_answers, total_games, utils.getCurrentTime(), userId]);
     return { isNewRecord, newScore, current_streak, max_score };
+}
+
+/**
+ * Lấy một thẻ Flashcard (câu trả lời sai) để ôn tập
+ */
+async function getReviewCard(userId) {
+    // Lấy ngẫu nhiên một câu đã từng làm sai và chưa được sửa
+    const row = await db.getQuery("SELECT id, question_json FROM bot_answer_history WHERE chat_id = ? AND is_correct = 0 AND question_json IS NOT NULL ORDER BY RAND() LIMIT 1", [userId]);
+    if (row && row.question_json) {
+        return { id: row.id, question: JSON.parse(row.question_json) };
+    }
+    return null;
+}
+
+/**
+ * Đếm số lượng câu hỏi sai đang chờ ôn tập
+ */
+async function getReviewCount(userId) {
+    const row = await db.getQuery("SELECT COUNT(*) as total FROM bot_answer_history WHERE chat_id = ? AND is_correct = 0 AND question_json IS NOT NULL", [userId]);
+    return row ? row.total : 0;
+}
+
+/**
+ * Đánh dấu một câu hỏi đã ôn tập thành công
+ */
+async function markReviewCorrect(historyId) {
+    await db.runQuery("UPDATE bot_answer_history SET is_correct = 1 WHERE id = ?", [historyId]);
 }
 
 async function getUserStats(userId) {

@@ -1,10 +1,20 @@
-<b>🚀 BẢN CẬP NHẬT MỚI: NHIỀU TÍNH NĂNG HẤP DẪN!</b>
+🚀 <b>BẢN CẬP NHẬT: HỆ THỐNG FLASHCARD THÔNG MINH</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Chào các bạn! Bot Quiz AI vừa được nâng cấp với các tính năng mới cực hot:
+1. 🗂️ <b>TÍNH NĂNG /REVIEW (MỚI)</b>
+- Tự động lưu lại những câu bạn đã làm sai trong lúc chơi Quiz.
+- Giúp bạn ôn tập trọng tâm, không bỏ lỡ kiến thức cũ.
+- Gõ <b>/review</b> để bắt đầu "xử đẹp" các câu hỏi hóc búa.
 
-🏆 <b>/leaderboard</b>: Xem bảng xếp hạng Top 10 thế giới hoặc ngay trong nhóm của bạn.
-💡 <b>/hint</b>: Gặp câu khó? Gõ /hint để loại ngay 1 đáp án sai (Chi phí: 1 điểm).
-📊 <b>/stats</b>: Xem thống kê chi tiết tỷ lệ đúng theo từng dạng bài và xu hướng tiến bộ của bạn.
-📅 <b>/daily</b>: Thử thách 10 câu hỏi cố định mỗi ngày dành cho tất cả mọi người. Cạnh tranh Top hàng ngày nào!
+2. ✨ <b>GIAO DIỆN "NEW LOOK"</b>
+- Hệ thống phản hồi Đúng/Sai được thiết kế lại rực rỡ, trực quan hơn.
+- Hiển thị giải thích chi tiết ngay lập tức để bạn hiểu bài sâu hơn.
+- Sử dụng màu sắc và icon sinh động giúp trải nghiệm học tập thú vị hơn.
 
-Chúc các bạn học tập thật vui vẻ cùng Bot! ❤️
+3. 🛠️ <b>TỐI ƯU HÓA & NÂNG CẤP</b>
+- Cải thiện tốc độ phản hồi của AI.
+- Tự động ẩn chữ ký (signature) trong game Nối từ để giảm trôi tin nhắn.
+- Nâng cấp hệ thống thống kê (/stats) chính xác hơn.
+
+👉 Hãy thử ngay: <b>/review</b>
+Chúc bạn sớm đạt rank Grand Master! ❤️
