@@ -12,6 +12,7 @@ const utils = require('./src/utils');
 // MESSAGE QUEUE PER THREAD (PHASE 3, TASK 6)
 // ---------------------------------------------------------
 const threadQueues = new Map();
+const THREAD_QUEUE_CLEANUP_MS = 5 * 60 * 1000; // Cleanup inactive threads after 5 minutes
 let pendingBroadcast = null; // { messageText: string, targets: string[] }
 
 async function processQueue(threadId) {
@@ -19,6 +20,7 @@ async function processQueue(threadId) {
     if (!queue || queue.processing || queue.items.length === 0) return;
 
     queue.processing = true;
+    queue.lastActivity = Date.now();
     while (queue.items.length > 0) {
         const { message, api } = queue.items.shift();
         try {
@@ -28,16 +30,28 @@ async function processQueue(threadId) {
         }
     }
     queue.processing = false;
+    queue.lastActivity = Date.now();
 }
+
+// Cleanup inactive thread queues periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [threadId, queue] of threadQueues.entries()) {
+        if (!queue.processing && (now - queue.lastActivity) > THREAD_QUEUE_CLEANUP_MS) {
+            threadQueues.delete(threadId);
+            console.log(`🧹 Dọn queue thread ${threadId} (inactive > 5 phút)`);
+        }
+    }
+}, 60 * 1000); // Run cleanup every minute
 
 function addToQueue(api, message) {
     const threadId = message.threadId;
     if (!threadId) return;
 
     if (!threadQueues.has(threadId)) {
-        threadQueues.set(threadId, { items: [], processing: false });
+        threadQueues.set(threadId, { items: [], processing: false, lastActivity: Date.now() });
     }
-    
+
     const queue = threadQueues.get(threadId);
     queue.items.push({ message, api });
     processQueue(threadId);
@@ -654,14 +668,17 @@ async function handleMessage(api, message) {
 }
 
 // ---------------------------------------------------------
-// RECONNECT LOGIC (PHASE 3, TASK 6, STEP 2)
+// RECONNECT LOGIC WITH EXPONENTIAL BACKOFF
 // ---------------------------------------------------------
 let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_RECONNECT_DELAY = 1000;
+const MAX_RECONNECT_DELAY = 60000; // Max 60s
 
 async function startBot() {
     try {
         await db.initDB();
-        
+
         let cookieData = config.ZALO.cookie;
         try { if (typeof cookieData === 'string' && cookieData.trim().startsWith('[')) cookieData = JSON.parse(cookieData); } catch (e) {}
 
@@ -679,31 +696,40 @@ async function startBot() {
         api.listener.start();
 
         api.listener.on('message', (message) => addToQueue(api, message));
-        
+
         api.listener.on('reaction', async (reactionEvent) => {
             try { await werewolf.handleReaction(reactionEvent); } catch (e) {}
         });
 
         api.listener.on('closed', () => {
             console.error("⚠️ Listener bị đóng! Đang thử kết nối lại...");
-            reconnect();
+            scheduleReconnect();
         });
 
         api.listener.on('error', (err) => {
             console.error("❌ Listener bị lỗi:", err);
-            reconnect();
+            scheduleReconnect();
         });
 
     } catch (error) {
-        console.error("❌ Lỗi khởi động Bot:", error);
-        reconnect();
+        console.error("❌ Lỗi khởi động Bot:", error.message);
+        scheduleReconnect();
     }
 }
 
-function reconnect() {
+function scheduleReconnect() {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.error(`❌ Đạt tối đa ${MAX_RECONNECT_ATTEMPTS} lần thử kết nối. Dừng lại!`);
+        return;
+    }
+
     reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Max 30s
-    console.log(`⏳ Thử kết nối lại sau ${delay/1000}s (Lần ${reconnectAttempts})...`);
+    // Exponential backoff with jitter: base * 2^attempts + random 0-500ms
+    const baseDelay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
+    const jitter = Math.floor(Math.random() * 500);
+    const delay = baseDelay + jitter;
+
+    console.log(`⏳ Thử kết nối lại sau ${delay/1000}s (Lần ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
     setTimeout(startBot, delay);
 }
 

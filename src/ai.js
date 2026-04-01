@@ -3,27 +3,47 @@ const config = require('./config');
 
 let currentKeyIndex = 0;
 const keyCooldowns = new Map(); // Index -> Cooldown timestamp
+let cachedClient = null; // Cache OpenAI client instance
+let cachedClientKeyIndex = -1; // Track which key the cached client uses
 
 function getOpenAIClient() {
-    // Check if current key is in cooldown
     const now = Date.now();
+    const totalKeys = config.API_KEYS.length;
+
+    // Find a valid key (not in cooldown)
     let attempts = 0;
-    while (keyCooldowns.has(currentKeyIndex) && keyCooldowns.get(currentKeyIndex) > now && attempts < config.API_KEYS.length) {
-        currentKeyIndex = (currentKeyIndex + 1) % config.API_KEYS.length;
+    while (keyCooldowns.has(currentKeyIndex) && keyCooldowns.get(currentKeyIndex) > now) {
+        currentKeyIndex = (currentKeyIndex + 1) % totalKeys;
         attempts++;
+        if (attempts >= totalKeys) {
+            // All keys are in cooldown
+            const oldestCooldown = Math.min(...Array.from(keyCooldowns.values()));
+            const waitTime = Math.ceil((oldestCooldown - now) / 1000);
+            throw new Error(`Hết API key khả dụng. Vui lòng đợi ${waitTime}s cho key sớm nhất.`);
+        }
     }
 
-    return new OpenAI({
-        baseURL: 'https://api.groq.com/openai/v1',
-        apiKey: config.API_KEYS[currentKeyIndex],
-    });
+    // Create new client only if key changed or no cached client
+    if (!cachedClient || cachedClientKeyIndex !== currentKeyIndex) {
+        cachedClient = new OpenAI({
+            baseURL: 'https://api.groq.com/openai/v1',
+            apiKey: config.API_KEYS[currentKeyIndex],
+        });
+        cachedClientKeyIndex = currentKeyIndex;
+    }
+
+    return cachedClient;
 }
 
 function rotateApiKey() {
     // Set cooldown for current key (60s)
     keyCooldowns.set(currentKeyIndex, Date.now() + 60000);
+    const oldIndex = currentKeyIndex;
     currentKeyIndex = (currentKeyIndex + 1) % config.API_KEYS.length;
-    console.warn(`🔄[API Key] Đã xoay tua sang API Key thứ ${currentKeyIndex + 1}/${config.API_KEYS.length}`);
+    // Invalidate cached client so new key gets a new instance
+    cachedClient = null;
+    cachedClientKeyIndex = -1;
+    console.warn(`🔄[API Key] Đã xoay tua từ key ${oldIndex + 1} sang key ${currentKeyIndex + 1}/${config.API_KEYS.length}`);
 }
 
 async function executeWithRetry(actionName, actionFn, maxRetries = 5) {

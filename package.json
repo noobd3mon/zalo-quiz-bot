@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "@heyputer/puter.js": "^2.2.11",
     "dotenv": "^17.3.1",
     "mysql2": "^3.9.2",
     "openai": "^6.27.0",
