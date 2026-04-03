@@ -13,7 +13,7 @@ const utils = require('./src/utils');
 // ---------------------------------------------------------
 const threadQueues = new Map();
 const THREAD_QUEUE_CLEANUP_MS = 5 * 60 * 1000; // Cleanup inactive threads after 5 minutes
-let pendingBroadcast = null; // { messageText: string, targets: string[] }
+const pendingBroadcasts = new Map(); // userId -> { messageText, targets }
 
 async function processQueue(threadId) {
     const queue = threadQueues.get(threadId);
@@ -158,7 +158,7 @@ async function handleMessage(api, message) {
         }
 
         const targets = await quiz.getAllUserIds();
-        pendingBroadcast = { messageText: broadcastText, targets: targets };
+        pendingBroadcasts.set(userId, { messageText: broadcastText, targets: targets });
 
         let preview = `<b>📢 XEM TRƯỚC BẢN TIN</b>\n━━━━━━━━━━━━━━━━━━━━\n${broadcastText}\n━━━━━━━━━━━━━━━━━━━━\n👥 <b>Đối tượng:</b> ${targets.length} người dùng.\n\n👉 Gõ <b>/confirm-broadcast</b> để bắt đầu gửi.`;
         return await sendParsedMsg(preview);
@@ -166,10 +166,10 @@ async function handleMessage(api, message) {
 
     if (command === '/confirm-broadcast') {
         if (userId !== config.ADMIN_ID) return await sendParsedMsg("❌ Bạn không có quyền thực hiện lệnh này!");
-        if (!pendingBroadcast) return await sendParsedMsg("⚠️ Không có bản tin nào đang chờ xác nhận. Hãy dùng /broadcast trước.");
+        if (!pendingBroadcasts.has(userId)) return await sendParsedMsg("⚠️ Không có bản tin nào đang chờ xác nhận. Hãy dùng /broadcast trước.");
 
-        const { messageText, targets } = pendingBroadcast;
-        pendingBroadcast = null; // Clear state immediately to prevent double sends
+        const { messageText, targets } = pendingBroadcasts.get(userId);
+        pendingBroadcasts.delete(userId); // Clear state immediately to prevent double sends
 
         await sendParsedMsg(`🚀 <b>Bắt đầu gửi bản tin tới ${targets.length} người...</b>`);
 
