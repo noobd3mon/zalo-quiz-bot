@@ -422,6 +422,135 @@ async function getGroupTop10(memberIds) {
     return await db.allQuery(query, memberIds);
 }
 
+// ==========================================
+// ACHIEVEMENT / BADGE SYSTEM
+// ==========================================
+const ACHIEVEMENTS = {
+    // Streak milestones
+    streak_3:    { emoji: '🔥', name: 'Khởi Động', desc: 'Đạt chuỗi 3 câu đúng liên tiếp' },
+    streak_10:   { emoji: '💪', name: 'Bền Bỉ', desc: 'Đạt chuỗi 10 câu đúng liên tiếp' },
+    streak_25:   { emoji: '⚡', name: 'Không Thể Cản', desc: 'Đạt chuỗi 25 câu đúng liên tiếp' },
+    streak_50:   { emoji: '🌟', name: 'Siêu Sao', desc: 'Đạt chuỗi 50 câu đúng liên tiếp' },
+    streak_100:  { emoji: '🐲', name: 'Huyền Thoại', desc: 'Đạt chuỗi 100 câu đúng liên tiếp' },
+    // Score milestones
+    score_10:    { emoji: '🎯', name: 'Sơ Cấp', desc: 'Đạt kỷ lục 10 điểm' },
+    score_50:    { emoji: '🏅', name: 'Chiến Binh', desc: 'Đạt kỷ lục 50 điểm' },
+    score_100:   { emoji: '🏆', name: 'Vô Địch', desc: 'Đạt kỷ lục 100 điểm' },
+    score_200:   { emoji: '👑', name: 'Bậc Thầy', desc: 'Đạt kỷ lục 200 điểm' },
+    score_500:   { emoji: '💎', name: 'Kim Cương', desc: 'Đạt kỷ lục 500 điểm' },
+    // Total questions answered
+    total_50:    { emoji: '📚', name: 'Chăm Chỉ', desc: 'Trả lời 50 câu hỏi' },
+    total_200:   { emoji: '📖', name: 'Học Giả', desc: 'Trả lời 200 câu hỏi' },
+    total_500:   { emoji: '🎓', name: 'Tiến Sĩ', desc: 'Trả lời 500 câu hỏi' },
+    total_1000:  { emoji: '🧠', name: 'Thiên Tài', desc: 'Trả lời 1000 câu hỏi' },
+    // Accuracy milestones (min 20 questions)
+    acc_80:      { emoji: '🎯', name: 'Chính Xác', desc: 'Tỷ lệ đúng >= 80% (tối thiểu 20 câu)' },
+    acc_90:      { emoji: '💯', name: 'Xuất Sắc', desc: 'Tỷ lệ đúng >= 90% (tối thiểu 20 câu)' },
+    acc_100:     { emoji: '✨', name: 'Hoàn Hảo', desc: 'Tỷ lệ đúng 100% (tối thiểu 20 câu)' },
+    // Daily challenge
+    daily_1:     { emoji: '📅', name: 'Ngày Đầu Tiên', desc: 'Hoàn thành 1 thử thách hàng ngày' },
+    daily_7:     { emoji: '🗓️', name: 'Một Tuần', desc: 'Hoàn thành 7 thử thách hàng ngày' },
+    daily_30:    { emoji: '📆', name: 'Kiên Trì', desc: 'Hoàn thành 30 thử thách hàng ngày' },
+    // Daily perfect score
+    daily_perfect: { emoji: '🌈', name: 'Daily Hoàn Hảo', desc: 'Đạt 10/10 trong thử thách hàng ngày' },
+    // Review mastery
+    review_10:   { emoji: '🔄', name: 'Ôn Tập Tốt', desc: 'Ôn tập đúng 10 câu sai' },
+    review_50:   { emoji: '🔁', name: 'Chinh Phục Sai Lầm', desc: 'Ôn tập đúng 50 câu sai' },
+};
+
+async function getUserAchievements(userId) {
+    const rows = await db.allQuery("SELECT achievement_key, unlocked_at FROM bot_achievements WHERE chat_id = ? ORDER BY unlocked_at ASC", [userId]);
+    return rows;
+}
+
+async function hasAchievement(userId, key) {
+    const row = await db.getQuery("SELECT id FROM bot_achievements WHERE chat_id = ? AND achievement_key = ?", [userId, key]);
+    return !!row;
+}
+
+async function awardAchievement(userId, key) {
+    const already = await hasAchievement(userId, key);
+    if (already) return null;
+    try {
+        await db.runQuery("INSERT INTO bot_achievements (chat_id, achievement_key) VALUES (?, ?)", [userId, key]);
+        return ACHIEVEMENTS[key] || null;
+    } catch (e) {
+        return null; // duplicate key, ignore
+    }
+}
+
+async function checkAndAwardAchievements(userId, stats) {
+    const newBadges = [];
+
+    // Streak achievements
+    const streak = stats.current_streak || 0;
+    if (streak >= 3) { const b = await awardAchievement(userId, 'streak_3'); if (b) newBadges.push(b); }
+    if (streak >= 10) { const b = await awardAchievement(userId, 'streak_10'); if (b) newBadges.push(b); }
+    if (streak >= 25) { const b = await awardAchievement(userId, 'streak_25'); if (b) newBadges.push(b); }
+    if (streak >= 50) { const b = await awardAchievement(userId, 'streak_50'); if (b) newBadges.push(b); }
+    if (streak >= 100) { const b = await awardAchievement(userId, 'streak_100'); if (b) newBadges.push(b); }
+
+    // Score achievements
+    const maxScore = stats.max_score || 0;
+    if (maxScore >= 10) { const b = await awardAchievement(userId, 'score_10'); if (b) newBadges.push(b); }
+    if (maxScore >= 50) { const b = await awardAchievement(userId, 'score_50'); if (b) newBadges.push(b); }
+    if (maxScore >= 100) { const b = await awardAchievement(userId, 'score_100'); if (b) newBadges.push(b); }
+    if (maxScore >= 200) { const b = await awardAchievement(userId, 'score_200'); if (b) newBadges.push(b); }
+    if (maxScore >= 500) { const b = await awardAchievement(userId, 'score_500'); if (b) newBadges.push(b); }
+
+    // Total questions achievements
+    const total = stats.total_questions || 0;
+    if (total >= 50) { const b = await awardAchievement(userId, 'total_50'); if (b) newBadges.push(b); }
+    if (total >= 200) { const b = await awardAchievement(userId, 'total_200'); if (b) newBadges.push(b); }
+    if (total >= 500) { const b = await awardAchievement(userId, 'total_500'); if (b) newBadges.push(b); }
+    if (total >= 1000) { const b = await awardAchievement(userId, 'total_1000'); if (b) newBadges.push(b); }
+
+    // Accuracy achievements (min 20 questions)
+    if (total >= 20) {
+        const correctAnswers = stats.correct_answers || 0;
+        const accuracy = Math.round((correctAnswers / total) * 100);
+        if (accuracy >= 80) { const b = await awardAchievement(userId, 'acc_80'); if (b) newBadges.push(b); }
+        if (accuracy >= 90) { const b = await awardAchievement(userId, 'acc_90'); if (b) newBadges.push(b); }
+        if (accuracy >= 100) { const b = await awardAchievement(userId, 'acc_100'); if (b) newBadges.push(b); }
+    }
+
+    return newBadges;
+}
+
+async function checkDailyAchievements(userId, score, totalQuestions) {
+    const newBadges = [];
+
+    // Perfect daily
+    if (score === totalQuestions) {
+        const b = await awardAchievement(userId, 'daily_perfect');
+        if (b) newBadges.push(b);
+    }
+
+    // Count total daily completions
+    const row = await db.getQuery("SELECT COUNT(*) as cnt FROM bot_daily_results WHERE chat_id = ? AND is_completed = 1", [userId]);
+    const dailyCount = row ? row.cnt : 0;
+    if (dailyCount >= 1) { const b = await awardAchievement(userId, 'daily_1'); if (b) newBadges.push(b); }
+    if (dailyCount >= 7) { const b = await awardAchievement(userId, 'daily_7'); if (b) newBadges.push(b); }
+    if (dailyCount >= 30) { const b = await awardAchievement(userId, 'daily_30'); if (b) newBadges.push(b); }
+
+    return newBadges;
+}
+
+async function checkReviewAchievements(userId) {
+    const newBadges = [];
+    const row = await db.getQuery("SELECT COUNT(*) as cnt FROM bot_answer_history WHERE chat_id = ? AND is_correct = 1 AND question_json IS NOT NULL", [userId]);
+    const reviewCount = row ? row.cnt : 0;
+    if (reviewCount >= 10) { const b = await awardAchievement(userId, 'review_10'); if (b) newBadges.push(b); }
+    if (reviewCount >= 50) { const b = await awardAchievement(userId, 'review_50'); if (b) newBadges.push(b); }
+    return newBadges;
+}
+
+function formatNewBadges(badges) {
+    if (!badges || badges.length === 0) return '';
+    const lines = badges.map(b => `   ${b.emoji} ${b.name} — ${b.desc}`);
+    return `\n\n🏅 THÀNH TỰU MỚI!\n${lines.join('\n')}`;
+}
+
 module.exports = {
     upsertUser, getUserInfo, changeLevel, changeMode, updateUserAnswerStats,
     recordAnswer, getUserStats, getAllUserIds,
@@ -429,5 +558,8 @@ module.exports = {
     getDailyQuestions, getDailySession, updateDailySession,
     getLevelBadge, getRankTitle, getStreakEmoji,
     generateQuestion, triggerPrefetch, getPrefetchedQuestion,
-    prefetchQueue, getGlobalTop10, getGroupTop10
+    prefetchQueue, getGlobalTop10, getGroupTop10,
+    getReviewCard, getReviewCount, markReviewCorrect,
+    ACHIEVEMENTS, getUserAchievements, checkAndAwardAchievements,
+    checkDailyAchievements, checkReviewAchievements, formatNewBadges
 };

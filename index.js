@@ -536,6 +536,19 @@ async function handleMessage(api, message) {
             const hintMsg = await quiz.useHint(threadId);
             return await sendParsedMsg(hintMsg);
         }
+        else if (command === "/badges") {
+            const achievements = await quiz.getUserAchievements(userId);
+            if (!achievements || achievements.length === 0) {
+                return await sendParsedMsg(`🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\nBạn chưa mở khóa thành tựu nào!\n👉 Chơi /quiz, /daily, /review để mở khóa.`);
+            }
+            let msg = `🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+            msg += `📊 Đã mở khóa: <b>${achievements.length}/${Object.keys(quiz.ACHIEVEMENTS).length}</b>\n\n`;
+            for (const a of achievements) {
+                const def = quiz.ACHIEVEMENTS[a.achievement_key];
+                if (def) msg += `${def.emoji} <b>${def.name}</b> — ${def.desc}\n`;
+            }
+            return await sendParsedMsg(msg);
+        }
         else if (command === "/daily") {
             global.reviewSessions.delete(threadId);
             const today = new Date().toISOString().split('T')[0];
@@ -580,6 +593,7 @@ async function handleMessage(api, message) {
 🔹 <b>/score</b> (hoặc <b>/s</b>): Xem hồ sơ & chuỗi thắng.
 🔹 <b>/stats</b>: Thống kê tỉ lệ đúng chi tiết.
 🔹 <b>/top</b>: Bảng xếp hạng 10 "siêu nhân".
+🔹 <b>/badges</b>: Xem thành tựu đã mở khóa.
 
 <small>Chúc bạn học tập và giải trí vui vẻ! ❤️</small>`;
             return await sendParsedMsg(helpMsg);
@@ -610,7 +624,10 @@ async function handleMessage(api, message) {
                 ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.HEART, message), 3).catch(()=>{});
                 await quiz.markReviewCorrect(card.id);
                 global.reviewSessions.delete(threadId);
-                await sendParsedMsg(`<green>✨ <b>XUẤT SẮC!</b> Bạn đã thuộc câu này.</green>\n📖 Giải thích: ${q.explanation}\n\n👉 Gõ <b>/review</b> để tiếp tục ôn tập.`);
+                // Check review achievements
+                const reviewBadges = await quiz.checkReviewAchievements(userId);
+                const badgeMsg = quiz.formatNewBadges(reviewBadges);
+                await sendParsedMsg(`<green>✨ <b>XUẤT SẮC!</b> Bạn đã thuộc câu này.</green>\n📖 Giải thích: ${q.explanation}\n\n👉 Gõ <b>/review</b> để tiếp tục ôn tập.${badgeMsg}`);
             } else {
                 ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.NO, message), 3).catch(()=>{});
                 await sendParsedMsg(`<red>❌ <b>VẪN CHƯA ĐÚNG RỒI...</b></red>\n💡 Đáp án đúng là: <b>${correct}</b>\n📖 Giải thích: ${q.explanation}\n\n<i>Đừng nản chí, hãy thử lại câu khác nhé!</i>\n👉 Gõ <b>/review</b> để tiếp tục.`);
@@ -646,7 +663,10 @@ async function handleMessage(api, message) {
                 }
 
                 if (isCompleted) {
-                    return await sendParsedMsg(`🏁 <b>HOÀN THÀNH THỬ THÁCH NGÀY!</b>\n🏆 Tổng điểm của bạn: <b>${newScore}/${dailyQuestions.length}</b>\n👉 Hãy quay lại vào ngày mai nhé!`);
+                    // Check daily achievements
+                    const dailyBadges = await quiz.checkDailyAchievements(userId, newScore, dailyQuestions.length);
+                    const badgeMsg = quiz.formatNewBadges(dailyBadges);
+                    return await sendParsedMsg(`🏁 <b>HOÀN THÀNH THỬ THÁCH NGÀY!</b>\n🏆 Tổng điểm của bạn: <b>${newScore}/${dailyQuestions.length}</b>\n👉 Hãy quay lại vào ngày mai nhé!${badgeMsg}`);
                 } else {
                     const nextQ = dailyQuestions[nextIndex];
                     return await sendParsedMsg(`🔥 <b>Câu hỏi ${nextIndex + 1}:</b>\n\n` + formatQuestionString(nextQ, newScore, currentLevel));
@@ -662,9 +682,17 @@ async function handleMessage(api, message) {
         const answer = text_lower.toUpperCase();
         if (answer === correct) {
             ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.HEART, message), 3).catch(()=>{});
-            const stats = await quiz.updateUserAnswerStats(userId, true, current_score, q.type, q); await quiz.saveSession(threadId, stats.newScore, null); 
+            const stats = await quiz.updateUserAnswerStats(userId, true, current_score, q.type, q); await quiz.saveSession(threadId, stats.newScore, null);
             await sendCorrectFeedback(displayName, answer, q.explanation, stats.newScore, stats.isNewRecord, stats.current_streak);
-            
+
+            // Check achievements
+            const updatedUser = await quiz.getUserInfo(userId);
+            if (updatedUser) {
+                const newBadges = await quiz.checkAndAwardAchievements(userId, updatedUser);
+                const badgeMsg = quiz.formatNewBadges(newBadges);
+                if (badgeMsg) await sendParsedMsg(badgeMsg);
+            }
+
             const nextQ = await quiz.getPrefetchedQuestion(threadId, currentLevel, currentMode);
             if (nextQ) {
                 await quiz.saveSession(threadId, stats.newScore, nextQ); await quiz.saveKeyword(threadId, nextQ.keyword || nextQ.question.substring(0, 30));

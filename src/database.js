@@ -130,11 +130,25 @@ async function initDB() {
         )
     `);
 
+    // ==========================================
+    // TẠO TABLE CHO ACHIEVEMENT SYSTEM
+    // ==========================================
+    await runQuery(`
+        CREATE TABLE IF NOT EXISTS bot_achievements (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            chat_id VARCHAR(255),
+            achievement_key VARCHAR(100),
+            unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_achievement (chat_id, achievement_key)
+        )
+    `);
+
     // Convert tất cả bảng sang UTF8MB4 để hỗ trợ tiếng Việt
     const tablesToConvert = [
         'bot_user_scores', 'bot_quiz_sessions', 'bot_question_history',
         'bot_group_settings', 'bot_wordchain_state', 'bot_wordchain_history',
-        'bot_answer_history', 'bot_daily_questions', 'bot_daily_results'
+        'bot_answer_history', 'bot_daily_questions', 'bot_daily_results',
+        'bot_achievements'
     ];
     for (const table of tablesToConvert) {
         try { await runQuery(`ALTER TABLE ${table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}

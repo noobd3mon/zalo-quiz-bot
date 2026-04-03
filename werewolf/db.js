@@ -60,6 +60,7 @@ async function initTables() {
     try { await runQuery(`ALTER TABLE bot_ww_games CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}
     try { await runQuery(`ALTER TABLE bot_ww_players ADD COLUMN name VARCHAR(255) NULL`); } catch (e) {}
     try { await runQuery(`ALTER TABLE bot_ww_players CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}
+    try { await runQuery(`ALTER TABLE bot_ww_games ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`); } catch (e) {}
     try { await runQuery(`ALTER TABLE bot_ww_votes CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}
     try { await runQuery(`ALTER TABLE bot_ww_night_actions CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}
 }

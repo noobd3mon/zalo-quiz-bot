@@ -173,6 +173,23 @@ async function gameTick() {
             if (g.state === 'NIGHT') await processNightResults(g.group_id, g);
             else if (g.state === 'DAY') await processDayResults(g.group_id, g);
         }
+
+        // Auto-cleanup: cancel lobbies idle for 15+ minutes
+        const staleLobby = await db.allQuery("SELECT * FROM bot_ww_games WHERE state = 'NEW_GAME' AND created_at <= DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+        for (const g of staleLobby) {
+            await game.endGame(g.group_id, 'AUTO_CLEANUP');
+            queueMsg(g.group_id, `⏰ Phòng chờ Ma Sói đã bị hủy tự động do không hoạt động quá 15 phút.\n👉 Gõ /ww create để tạo phòng mới!`, true);
+            console.log(`🧹 Auto-cleanup WW lobby: ${g.group_id}`);
+        }
+
+        // Auto-cleanup: cancel running games stuck for 10+ minutes past timer
+        const stuckGames = await db.allQuery("SELECT * FROM bot_ww_games WHERE state IN ('DAY', 'NIGHT') AND timer_ends_at <= DATE_SUB(NOW(), INTERVAL 10 MINUTE)");
+        for (const g of stuckGames) {
+            await game.endGame(g.group_id, 'AUTO_CLEANUP');
+            await game.lockGroup(g.group_id, false);
+            queueMsg(g.group_id, `⏰ Ván Ma Sói đã bị hủy tự động do bị kẹt quá lâu.\n👉 Gõ /ww create để chơi lại!`, true);
+            console.log(`🧹 Auto-cleanup stuck WW game: ${g.group_id}`);
+        }
     } catch (e) {
         console.error("Lỗi WW gameTick:", e);
     }
