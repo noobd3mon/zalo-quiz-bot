@@ -240,17 +240,22 @@ async function handleMessage(api, message) {
         }
 
         if (command === "/badges") {
-            const achievements = await quiz.getUserAchievements(userId);
-            if (!achievements || achievements.length === 0) {
-                return await sendParsedMsg(`🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\nBạn chưa mở khóa thành tựu nào!\n👉 Chơi /quiz, /daily, /review để mở khóa.`);
+            try {
+                const achievements = await quiz.getUserAchievements(userId);
+                if (!achievements || achievements.length === 0) {
+                    return await sendParsedMsg(`🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\nBạn chưa mở khóa thành tựu nào!\n👉 Chơi /quiz, /daily, /review để mở khóa.`);
+                }
+                let msg = `🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+                msg += `📊 Đã mở khóa: <b>${achievements.length}/${Object.keys(quiz.ACHIEVEMENTS).length}</b>\n\n`;
+                for (const a of achievements) {
+                    const def = quiz.ACHIEVEMENTS[a.achievement_key];
+                    if (def) msg += `${def.emoji} <b>${def.name}</b> — ${def.desc}\n`;
+                }
+                return await sendParsedMsg(msg);
+            } catch (e) {
+                console.error("❌ Lỗi lấy thành tựu:", e);
+                return await sendParsedMsg("❌ Không thể tải thành tựu. Hãy thử lại sau!");
             }
-            let msg = `🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
-            msg += `📊 Đã mở khóa: <b>${achievements.length}/${Object.keys(quiz.ACHIEVEMENTS).length}</b>\n\n`;
-            for (const a of achievements) {
-                const def = quiz.ACHIEVEMENTS[a.achievement_key];
-                if (def) msg += `${def.emoji} <b>${def.name}</b> — ${def.desc}\n`;
-            }
-            return await sendParsedMsg(msg);
         }
 
         // --- WORDCHAIN ADMIN COMMANDS ---
@@ -551,17 +556,22 @@ async function handleMessage(api, message) {
             return await sendParsedMsg(hintMsg);
         }
         else if (command === "/badges") {
-            const achievements = await quiz.getUserAchievements(userId);
-            if (!achievements || achievements.length === 0) {
-                return await sendParsedMsg(`🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\nBạn chưa mở khóa thành tựu nào!\n👉 Chơi /quiz, /daily, /review để mở khóa.`);
+            try {
+                const achievements = await quiz.getUserAchievements(userId);
+                if (!achievements || achievements.length === 0) {
+                    return await sendParsedMsg(`🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\nBạn chưa mở khóa thành tựu nào!\n👉 Chơi /quiz, /daily, /review để mở khóa.`);
+                }
+                let msg = `🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+                msg += `📊 Đã mở khóa: <b>${achievements.length}/${Object.keys(quiz.ACHIEVEMENTS).length}</b>\n\n`;
+                for (const a of achievements) {
+                    const def = quiz.ACHIEVEMENTS[a.achievement_key];
+                    if (def) msg += `${def.emoji} <b>${def.name}</b> — ${def.desc}\n`;
+                }
+                return await sendParsedMsg(msg);
+            } catch (e) {
+                console.error("❌ Lỗi lấy thành tựu:", e);
+                return await sendParsedMsg("❌ Không thể tải thành tựu. Hãy thử lại sau!");
             }
-            let msg = `🏅 <b>THÀNH TỰU CỦA ${displayName.toUpperCase()}</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
-            msg += `📊 Đã mở khóa: <b>${achievements.length}/${Object.keys(quiz.ACHIEVEMENTS).length}</b>\n\n`;
-            for (const a of achievements) {
-                const def = quiz.ACHIEVEMENTS[a.achievement_key];
-                if (def) msg += `${def.emoji} <b>${def.name}</b> — ${def.desc}\n`;
-            }
-            return await sendParsedMsg(msg);
         }
         else if (command === "/daily") {
             global.reviewSessions.delete(threadId);
