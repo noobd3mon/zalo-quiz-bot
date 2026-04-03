@@ -157,7 +157,7 @@ async function isGroupAdmin(groupId, userId) {
         }
     } catch (e) {
         console.error("Lỗi check admin:", e.message);
-        return true; // Fallback
+        return false; // Deny-by-default on error
     }
     return false;
 }

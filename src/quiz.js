@@ -152,8 +152,8 @@ async function useHint(threadId) {
     // Pick a random wrong option
     const randomWrong = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
 
-    // Deduct 1 point from current score
-    session.current_score -= 1;
+    // Deduct 1 point from current score (floor at 0)
+    session.current_score = Math.max(0, session.current_score - 1);
 
     // Update session in DB
     await saveSession(threadId, session.current_score, q);
@@ -372,9 +372,16 @@ QUY TẮC ĐỊNH DẠNG ĐẦU RA JSON (Bạn phải theo đúng cấu trúc n�
     }
 }
 
-const prefetchQueue = new Map(); const POOL_SIZE = 3; 
+const prefetchQueue = new Map(); const POOL_SIZE = 3; const PREFETCH_MAX_THREADS = 50;
 async function triggerPrefetch(threadId, level, mode) {
-    if (!prefetchQueue.has(threadId) || prefetchQueue.get(threadId).level !== level || prefetchQueue.get(threadId).mode !== mode) prefetchQueue.set(threadId, { level: level, mode: mode, queue:[], isFetching: false });
+    if (!prefetchQueue.has(threadId) || prefetchQueue.get(threadId).level !== level || prefetchQueue.get(threadId).mode !== mode) {
+        // Evict oldest entries if over limit
+        if (prefetchQueue.size >= PREFETCH_MAX_THREADS) {
+            const firstKey = prefetchQueue.keys().next().value;
+            prefetchQueue.delete(firstKey);
+        }
+        prefetchQueue.set(threadId, { level: level, mode: mode, queue:[], isFetching: false });
+    }
     const state = prefetchQueue.get(threadId);
     if (state.isFetching) return; state.isFetching = true;
     while (state.queue.length < POOL_SIZE && state.level === level && state.mode === mode) {

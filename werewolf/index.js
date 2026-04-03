@@ -198,6 +198,15 @@ async function processNightResults(groupId, lobbyGame) {
             witchHeal = action.target_id;
         } else if (action.action_type === 'POISON') {
             witchPoison = action.target_id;
+        } else if (action.action_type === 'SHIP') {
+            // Cupid pairs two lovers
+            const target2 = action.extra ? JSON.parse(action.extra).target2 : null;
+            if (action.target_id && target2) {
+                await db.runQuery("UPDATE bot_ww_players SET lover_id = ? WHERE group_id = ? AND user_id = ?", [target2, groupId, action.target_id]);
+                await db.runQuery("UPDATE bot_ww_players SET lover_id = ? WHERE group_id = ? AND user_id = ?", [action.target_id, groupId, target2]);
+                queueMsg(action.target_id, `💘 Thần Tình Yêu đã ghép đôi bạn với ${pNameById(target2, players)}!\nNếu 1 trong 2 chết, người còn lại cũng chết theo vì đau buồn.`);
+                queueMsg(target2, `💘 Thần Tình Yêu đã ghép đôi bạn với ${pNameById(action.target_id, players)}!\nNếu 1 trong 2 chết, người còn lại cũng chết theo vì đau buồn.`);
+            }
         } else if (action.action_type === 'SEE') {
             const targetP = players.find(p => p.user_id === action.target_id);
             if (targetP) {
@@ -211,8 +220,13 @@ async function processNightResults(groupId, lobbyGame) {
     }
 
     let maxV = 0;
+    let wolfTiedTargets = [];
     for (const [tId, v] of Object.entries(wolvesVotes)) {
-        if (v > maxV) { maxV = v; wolfTarget = tId; }
+        if (v > maxV) { maxV = v; wolfTiedTargets = [tId]; }
+        else if (v === maxV) { wolfTiedTargets.push(tId); }
+    }
+    if (wolfTiedTargets.length > 0) {
+        wolfTarget = wolfTiedTargets[Math.floor(Math.random() * wolfTiedTargets.length)];
     }
 
     const deadList = [];
@@ -252,12 +266,51 @@ async function processNightResults(groupId, lobbyGame) {
     for (const d of deadList) {
         await db.runQuery("UPDATE bot_ww_players SET is_alive = 0 WHERE group_id = ? AND user_id = ?", [groupId, d]);
     }
+
+    // Lover death propagation: if a lover dies, the other dies too
+    const loverDeaths = [];
+    for (const d of deadList) {
+        const deadP = players.find(p => p.user_id === d);
+        if (deadP && deadP.lover_id) {
+            const lover = players.find(p => p.user_id === deadP.lover_id && p.is_alive);
+            if (lover && !deadList.includes(lover.user_id) && !loverDeaths.includes(lover.user_id)) {
+                loverDeaths.push(lover.user_id);
+                await db.runQuery("UPDATE bot_ww_players SET is_alive = 0 WHERE group_id = ? AND user_id = ?", [groupId, lover.user_id]);
+            }
+        }
+    }
+    deadList.push(...loverDeaths);
+
+    // Hunter revenge: if Hunter dies, shoots a random alive enemy
+    const hunterKills = [];
+    for (const uid of deadList) {
+        const deadP = players.find(p => p.user_id === uid);
+        if (deadP) {
+            const deadRole = createRoleObject(deadP);
+            if (deadRole.name === 'Hunter') {
+                const aliveEnemies = players.filter(p => p.is_alive && !deadList.includes(p.user_id) && !hunterKills.includes(p.user_id));
+                if (aliveEnemies.length > 0) {
+                    const victim = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                    hunterKills.push(victim.user_id);
+                    await db.runQuery("UPDATE bot_ww_players SET is_alive = 0 WHERE group_id = ? AND user_id = ?", [groupId, victim.user_id]);
+                    queueMsg(uid, `🔫 Trước khi chết, bạn đã bắn ${pName(victim)}!`);
+                    queueMsg(victim.user_id, `🔫 THỢ SĂN ĐÃ BẮN BẠN!\n\n${pName(deadP)} là Thợ Săn, trước khi chết đã kéo bạn theo!\nHãy im lặng theo dõi trận đấu nhé! 🙏`);
+                }
+            }
+        }
+    }
+    deadList.push(...hunterKills);
+
     const updatedPlayers = await db.getPlayers(groupId);
 
     // DM dead players to notify them
     for (const uid of deadList) {
         const deadP = updatedPlayers.find(p => p.user_id === uid);
-        queueMsg(uid, `💀 BẠN ĐÃ BỊ GIẾT TRONG ĐÊM ${day}!\n\n${pName(deadP)}, bạn đã tử nạn. Bạn không thể tham gia thảo luận hay vote nữa.\nHãy im lặng theo dõi trận đấu nhé! 🙏`);
+        if (loverDeaths.includes(uid)) {
+            queueMsg(uid, `💔 NGƯỜI YÊU CỦA BẠN ĐÃ CHẾT!\n\n${pName(deadP)}, bạn quá đau buồn và cũng ra đi theo người yêu.\nHãy im lặng theo dõi trận đấu nhé! 🙏`);
+        } else {
+            queueMsg(uid, `💀 BẠN ĐÃ BỊ GIẾT TRONG ĐÊM ${day}!\n\n${pName(deadP)}, bạn đã tử nạn. Bạn không thể tham gia thảo luận hay vote nữa.\nHãy im lặng theo dõi trận đấu nhé! 🙏`);
+        }
     }
 
     // Build announcement
@@ -318,6 +371,27 @@ async function processDayResults(groupId, lobbyGame) {
             queueMsg(groupId, `━━━━━━━━━━━━━━━━━━━\n🌇 HOÀNG HÔN\n━━━━━━━━━━━━━━━━━━━\n\n☠️ Dân làng đã treo cổ hỏa thiêu: ${pName(targetPlayer)}`, true);
             // DM the dead player
             queueMsg(target, `💀 BẠN ĐÃ BỊ TREO CỔ!\n\n${pName(targetPlayer)}, dân làng đã vote bạn ra. Bạn không thể tham gia thảo luận nữa.\nHãy theo dõi trận đấu trong im lặng! 🙏`);
+
+            // Hunter revenge: shoots a random alive player
+            if (targetRole && targetRole.name === 'Hunter') {
+                const aliveOthers = playersFull.filter(p => p.is_alive && p.user_id !== target);
+                if (aliveOthers.length > 0) {
+                    const victim = aliveOthers[Math.floor(Math.random() * aliveOthers.length)];
+                    await db.runQuery("UPDATE bot_ww_players SET is_alive = 0 WHERE group_id = ? AND user_id = ?", [groupId, victim.user_id]);
+                    queueMsg(groupId, `🔫 ${pName(targetPlayer)} là THỢ SĂN! Trước khi chết đã bắn ${pName(victim)}!`, true);
+                    queueMsg(victim.user_id, `🔫 THỢ SĂN ĐÃ BẮN BẠN!\n\n${pName(targetPlayer)} là Thợ Săn, trước khi chết đã kéo bạn theo!\nHãy im lặng theo dõi trận đấu nhé! 🙏`);
+                }
+            }
+
+            // Lover death propagation
+            if (targetPlayer && targetPlayer.lover_id) {
+                const lover = playersFull.find(p => p.user_id === targetPlayer.lover_id && p.is_alive);
+                if (lover) {
+                    await db.runQuery("UPDATE bot_ww_players SET is_alive = 0 WHERE group_id = ? AND user_id = ?", [groupId, lover.user_id]);
+                    queueMsg(groupId, `💔 ${pName(lover)} quá đau buồn trước cái chết của người yêu và cũng ra đi...`, true);
+                    queueMsg(lover.user_id, `💔 NGƯỜI YÊU CỦA BẠN ĐÃ CHẾT!\n\n${pName(lover)}, bạn quá đau buồn và cũng ra đi theo người yêu.\nHãy im lặng theo dõi trận đấu nhé! 🙏`);
+                }
+            }
         }
     }
 

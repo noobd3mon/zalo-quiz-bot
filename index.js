@@ -33,13 +33,28 @@ async function processQueue(threadId) {
     queue.lastActivity = Date.now();
 }
 
-// Cleanup inactive thread queues periodically
+// Cleanup inactive thread queues and stale Maps periodically
 setInterval(() => {
     const now = Date.now();
     for (const [threadId, queue] of threadQueues.entries()) {
         if (!queue.processing && (now - queue.lastActivity) > THREAD_QUEUE_CLEANUP_MS) {
             threadQueues.delete(threadId);
             console.log(`🧹 Dọn queue thread ${threadId} (inactive > 5 phút)`);
+        }
+    }
+    // Cleanup stale rate-limit Maps (entries older than 10 minutes)
+    for (const [threadId, ts] of lastMessageTime.entries()) {
+        if (now - ts > 10 * 60 * 1000) lastMessageTime.delete(threadId);
+    }
+    for (const [threadId, ts] of lastWarningTime.entries()) {
+        if (now - ts > 10 * 60 * 1000) lastWarningTime.delete(threadId);
+    }
+    // Cleanup stale review sessions (older than 30 minutes)
+    if (global.reviewSessions) {
+        for (const [threadId, card] of global.reviewSessions.entries()) {
+            if (card._createdAt && now - card._createdAt > 30 * 60 * 1000) {
+                global.reviewSessions.delete(threadId);
+            }
         }
     }
 }, 60 * 1000); // Run cleanup every minute
@@ -467,6 +482,7 @@ async function handleMessage(api, message) {
                 return await sendParsedMsg("✨ <b>TUYỆT VỜI!</b>\nBạn không có câu hỏi nào cần ôn tập cả. Hãy tiếp tục chơi /quiz nhé!");
             }
             const count = await quiz.getReviewCount(userId);
+            card._createdAt = Date.now();
             global.reviewSessions.set(threadId, card);
             let msg = `🗂️ <b>CHẾ ĐỘ ÔN TẬP (FLASHCARD)</b>\n━━━━━━━━━━━━━━━━━━━━\nBạn còn <b>${count}</b> câu cần chinh phục.\n\n` + formatQuestionString(card.question, 0, currentLevel, true);
             return await sendParsedMsg(msg);

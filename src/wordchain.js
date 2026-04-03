@@ -2,6 +2,7 @@ const db = require('./database');
 
 // In-memory definition cache: word -> { valid, definition }
 const dictionaryCache = new Map();
+const DICTIONARY_CACHE_MAX = 500;
 // In-memory voteskip tracking: groupId -> Set of userIds
 const voteskipMap = new Map();
 // In-memory last word definition cache: groupId -> { word, definition }
@@ -72,6 +73,10 @@ async function lookupVietnameseWord(word) {
         }
         
         const result = { valid: wordExists, definition };
+        if (dictionaryCache.size >= DICTIONARY_CACHE_MAX) {
+            const firstKey = dictionaryCache.keys().next().value;
+            dictionaryCache.delete(firstKey);
+        }
         dictionaryCache.set(lowerWord, result);
         return result;
     } catch (e) {
@@ -212,6 +217,10 @@ async function lookupEnglishWord(word) {
             }
             
             const result = { valid: true, definition: defs.length > 0 ? defs.slice(0, 3).join(", ") : null };
+            if (dictionaryCache.size >= DICTIONARY_CACHE_MAX) {
+                const firstKey = dictionaryCache.keys().next().value;
+                dictionaryCache.delete(firstKey);
+            }
             dictionaryCache.set(lowerWord, result);
             return result;
         }
