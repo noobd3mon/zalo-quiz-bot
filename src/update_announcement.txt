@@ -1,20 +1,22 @@
-🚀 <b>BẢN CẬP NHẬT: HỆ THỐNG FLASHCARD THÔNG MINH</b>
+🚀 <b>BẢN CẬP NHẬT LỚN: THÀNH TỰU & MA SÓI NÂNG CẤP</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. 🗂️ <b>TÍNH NĂNG /REVIEW (MỚI)</b>
-- Tự động lưu lại những câu bạn đã làm sai trong lúc chơi Quiz.
-- Giúp bạn ôn tập trọng tâm, không bỏ lỡ kiến thức cũ.
-- Gõ <b>/review</b> để bắt đầu "xử đẹp" các câu hỏi hóc búa.
+1. 🏅 <b>HỆ THỐNG THÀNH TỰU (MỚI)</b>
+- 23 huy hiệu chờ bạn chinh phục: chuỗi streak, kỷ lục điểm, tỷ lệ chính xác, thử thách hàng ngày, ôn tập...
+- Tự động thông báo khi bạn mở khóa thành tựu mới!
+- Gõ <b>/badges</b> để xem bộ sưu tập huy hiệu của bạn.
 
-2. ✨ <b>GIAO DIỆN "NEW LOOK"</b>
-- Hệ thống phản hồi Đúng/Sai được thiết kế lại rực rỡ, trực quan hơn.
-- Hiển thị giải thích chi tiết ngay lập tức để bạn hiểu bài sâu hơn.
-- Sử dụng màu sắc và icon sinh động giúp trải nghiệm học tập thú vị hơn.
+2. 🐺 <b>MA SÓI - NÂNG CẤP TOÀN DIỆN</b>
+- 💘 <b>Cupid</b> hoạt động đầy đủ: ghép đôi 2 người, 1 chết thì cả 2 chết.
+- 🔫 <b>Thợ Săn</b> tự động bắn 1 người khi bị giết (đêm hoặc ngày).
+- ⚖️ Sói vote hòa giờ chọn ngẫu nhiên thay vì chọn sai.
+- ⏰ Game bỏ dở tự động hủy sau 15 phút không hoạt động.
 
-3. 🛠️ <b>TỐI ƯU HÓA & NÂNG CẤP</b>
-- Cải thiện tốc độ phản hồi của AI.
-- Tự động ẩn chữ ký (signature) trong game Nối từ để giảm trôi tin nhắn.
-- Nâng cấp hệ thống thống kê (/stats) chính xác hơn.
+3. 🛠️ <b>SỬA LỖI & TỐI ƯU</b>
+- Sửa lỗi /hint có thể khiến điểm bị âm.
+- Sửa lỗi bảo mật: người lạ không thể /start game khi API lỗi.
+- Tối ưu bộ nhớ: tự động dọn dẹp dữ liệu cũ, giảm lag.
+- Sửa lỗi broadcast bị đè khi nhiều admin dùng cùng lúc.
 
-👉 Hãy thử ngay: <b>/review</b>
-Chúc bạn sớm đạt rank Grand Master! ❤️
+👉 Thử ngay: <b>/badges</b> | <b>/quiz</b> | <b>/ww create</b>
+Chúc bạn sớm mở khóa hết 23 thành tựu! ❤️
