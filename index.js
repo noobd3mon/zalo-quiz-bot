@@ -142,6 +142,18 @@ async function handleMessage(api, message) {
         return await sendParsedMsg(`👤 Thông tin của bạn:\n- User ID: ${userId}\n- Thread ID: ${threadId}`);
     }
 
+    // --- ADMIN SYSTEM COMMANDS ---
+    if (command === '/shutdown-bot' || command === '/stop-bot') {
+        if (userId !== config.ADMIN_ID) return await sendParsedMsg("❌ Bạn không có quyền thực hiện lệnh này!");
+        await sendParsedMsg("⚠️ <red>Tiến hành tắt máy chủ Bot Zalo theo lệnh Admin...</red>");
+        console.log("⚠️ Admin đã ra lệnh force stop bot từ Zalo!");
+        setTimeout(async () => {
+            try { await db.pool.end(); } catch (err) {}
+            process.exit(0);
+        }, 1500); // Đợi 1.5s để tin nhắn kịp đẩy đi
+        return;
+    }
+
     // --- ADMIN BROADCAST COMMANDS ---
     if (command === '/broadcast') {
         if (userId !== config.ADMIN_ID) return await sendParsedMsg("❌ Bạn không có quyền thực hiện lệnh này!");
