@@ -7,6 +7,7 @@ const ai = require('./src/ai');
 const quiz = require('./src/quiz');
 const wordchain = require('./src/wordchain');
 const utils = require('./src/utils');
+const tenschoolLive = require('./src/tenschool_live');
 
 // ---------------------------------------------------------
 // MESSAGE QUEUE PER THREAD (PHASE 3, TASK 6)
@@ -255,6 +256,28 @@ async function handleMessage(api, message) {
             } catch (e) {
                 console.error("❌ Lỗi lấy thành tựu:", e);
                 return await sendParsedMsg("❌ Không thể tải thành tựu. Hãy thử lại sau!");
+            }
+        }
+
+        // --- TENSCHOOL LIVE COMMANDS ---
+        if (command === '/tenschool') {
+            let isGroupAdmin = false;
+            try {
+                const gInfo = await api.getGroupInfo(threadId);
+                const gData = gInfo.gridInfoMap[threadId];
+                if (gData && gData.adminIds && gData.adminIds.includes(userId)) isGroupAdmin = true;
+            } catch (e) {}
+            if (userId !== config.ADMIN_ID && !isGroupAdmin) return await sendParsedMsg("❌ Bạn không có quyền Admin để dùng lệnh này!");
+
+            const action = args[1];
+            if (action === 'on') {
+                await db.runQuery("INSERT INTO bot_tenschool_groups_config (group_id, enabled) VALUES (?, 1) ON DUPLICATE KEY UPDATE enabled = 1", [threadId]);
+                return await sendParsedMsg("<green>✅ BẬT thông báo TenSchool Live!</green>\n\nBot sẽ tự động nhắn tag @all khi có luồng Live Stream mới.", true);
+            } else if (action === 'off') {
+                await db.runQuery("UPDATE bot_tenschool_groups_config SET enabled = 0 WHERE group_id = ?", [threadId]);
+                return await sendParsedMsg("<red>✅ TẮT thông báo TenSchool Live.</red>", true);
+            } else {
+                return await sendParsedMsg(`⚠️ Cú pháp: ${command} on hoặc off`, true);
             }
         }
 
@@ -761,6 +784,7 @@ async function startBot() {
         reconnectAttempts = 0;
 
         werewolf.init(api, db.runQuery, db.getQuery, db.allQuery);
+        tenschoolLive.startPolling(api, db);
         api.listener.start();
 
         api.listener.on('message', (message) => addToQueue(api, message));

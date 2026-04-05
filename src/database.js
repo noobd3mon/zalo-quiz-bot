@@ -143,12 +143,22 @@ async function initDB() {
         )
     `);
 
+    // ==========================================
+    // TẠO TABLE CHO TENSCHOOL LIVE
+    // ==========================================
+    await runQuery(`
+        CREATE TABLE IF NOT EXISTS bot_tenschool_groups_config (
+            group_id VARCHAR(255) PRIMARY KEY,
+            enabled TINYINT DEFAULT 1
+        )
+    `);
+
     // Convert tất cả bảng sang UTF8MB4 để hỗ trợ tiếng Việt
     const tablesToConvert = [
         'bot_user_scores', 'bot_quiz_sessions', 'bot_question_history',
         'bot_group_settings', 'bot_wordchain_state', 'bot_wordchain_history',
         'bot_answer_history', 'bot_daily_questions', 'bot_daily_results',
-        'bot_achievements'
+        'bot_achievements', 'bot_tenschool_groups_config'
     ];
     for (const table of tablesToConvert) {
         try { await runQuery(`ALTER TABLE ${table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); } catch (e) {}
