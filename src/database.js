@@ -6,22 +6,40 @@ const pool = mysql.createPool({
     charset: 'utf8mb4',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
 });
 
+async function executeWithRetry(query, params, retries = 3) {
+    while (retries > 0) {
+        try {
+            const [result] = await pool.execute(query, params);
+            return result;
+        } catch (error) {
+            if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT'].includes(error.code)) {
+                retries--;
+                console.warn(`[DB] ${error.code} - Đang kết nối lại... (Còn: ${retries})`);
+                if (retries === 0) throw error;
+                await new Promise(r => setTimeout(r, 1000));
+            } else {
+                throw error;
+            }
+        }
+    }
+}
+
 const runQuery = async (query, params = []) => { 
-    const [result] = await pool.execute(query, params); 
-    return result; 
+    return await executeWithRetry(query, params); 
 };
 
 const getQuery = async (query, params =[]) => { 
-    const [rows] = await pool.execute(query, params); 
+    const rows = await executeWithRetry(query, params); 
     return rows[0] || null; 
 };
 
 const allQuery = async (query, params = []) => { 
-    const [rows] = await pool.execute(query, params); 
-    return rows; 
+    return await executeWithRetry(query, params); 
 };
 
 async function initDB() {
