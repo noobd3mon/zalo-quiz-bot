@@ -411,15 +411,17 @@ async function handleMessage(api, message) {
                             return await sendParsedMsg(`❌ <red>Từ "${text_lower}" đã được sử dụng!</red>`);
                         }
                     }
-                    const lookup = await wordchain.lookupVietnameseWord(text_lower);
-                    if (!lookup.valid) {
+                    const isValid = await wordchain.isValidVietnameseWord(text_lower);
+                    if (!isValid) {
                         ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.NO, message), 3).catch(()=>{});
                         return await sendParsedMsg(`❌ <red>"${text_lower}" không có trong từ điển!</red>`);
                     }
+                    wordchain.lookupVietnameseWord(text_lower).then(lookup => {
+                        if (lookup && lookup.valid && lookup.definition) wordchain.wordDefinitionCache.set(threadId, { word: text_lower, definition: lookup.definition });
+                    }).catch(()=>{});
                     await ai.executeWithRetry("Zalo_Reaction", () => api.addReaction(Reactions.HEART, message), 3).catch(()=>{});
                     await wordchain.updateWordChainState(threadId, text_lower, userId);
                     await wordchain.addWordHistory(threadId, text_lower);
-                    wordchain.wordDefinitionCache.set(threadId, { word: text_lower, definition: lookup.definition });
                     wordchain.voteskipMap.delete(threadId);
                     if (!state || !state.current_word) await sendParsedMsg(`<green>🎮 Bắt đầu: <b>${text_lower}</b></green>\n👉 Tiếp theo bắt đầu bằng: <b>${syllables[1]}</b>`);
                     

@@ -118,10 +118,21 @@ async function checkAndNotify(api, db) {
             if (groupIds.length === 0) return;
 
             for (const course of newlyLiveCourses) {
-                const messageText = `🔴 <b>TenSchool Live!</b>\n━━━━━━━━━━━━━━━━━━━━\nGiáo viên vừa mở live môn:\n📖 <b>${course.courseTitle}</b>\n\n👉 @all Vào xem trực tiếp ngay tại trang web/app TenSchool!`;
+                const messageText = `🔴 <b>TenSchool Live!</b>\n━━━━━━━━━━━━━━━━━━━━\nGiáo viên vừa mở live môn:\n📖 <b>${course.courseTitle}</b>\n\n👉 @All Vào xem trực tiếp ngay tại trang web/app TenSchool!\nhttps://cungtienbo.ddns.net/Custom/tenschool/xemlive.html`;
                 
                 // Parse tags format cho Zalo
                 const payload = utils.parseZaloTags(messageText, 15);
+
+                // Gắn Mention @All chuẩn cho ZCA-JS
+                const mentionText = "@All";
+                const mPos = payload.msg.indexOf(mentionText);
+                if (mPos !== -1) {
+                    payload.mentions = [{
+                        pos: mPos,
+                        uid: "-1",
+                        len: mentionText.length
+                    }];
+                }
 
                 for (const groupId of groupIds) {
                     try {

@@ -53,9 +53,9 @@ const SOHA_HEADERS = {
     "pragma": "no-cache",
 };
 
-async function lookupVietnameseWord(word) {
+async function isValidVietnameseWord(word) {
     const lowerWord = word.toLowerCase();
-    if (dictionaryCache.has(lowerWord)) return dictionaryCache.get(lowerWord);
+    if (dictionaryCache.has(lowerWord)) return dictionaryCache.get(lowerWord).valid;
 
     try {
         const searchUrl = `http://tratu.soha.vn/index.php?search=${encodeURIComponent(word)}&dict=vn_vn&btnSearch=&chuyennganh=&tenchuyennganh=`;
@@ -67,16 +67,37 @@ async function lookupVietnameseWord(word) {
         
         const wordExists = res.status === 302 || res.status === 301;
         
+        if (!wordExists) {
+            // cache negative hits too
+            if (dictionaryCache.size >= DICTIONARY_CACHE_MAX) dictionaryCache.delete(dictionaryCache.keys().next().value);
+            dictionaryCache.set(lowerWord, { valid: false, definition: null });
+        }
+        return wordExists;
+    } catch (e) {
+        console.error("Lỗi tratu.soha.vn API:", e.message);
+        return false;
+    }
+}
+
+async function lookupVietnameseWord(word) {
+    const lowerWord = word.toLowerCase();
+    if (dictionaryCache.has(lowerWord) && dictionaryCache.get(lowerWord).definition !== undefined) {
+        // Nếu đã có cache definition thì trả về
+        if (dictionaryCache.get(lowerWord).definition !== null || !dictionaryCache.get(lowerWord).valid) {
+            return dictionaryCache.get(lowerWord);
+        }
+    }
+
+    try {
+        const isValid = await isValidVietnameseWord(word);
+        
         let definition = null;
-        if (wordExists) {
+        if (isValid) {
             definition = await getVietnameseWordMeaning(word);
         }
         
-        const result = { valid: wordExists, definition };
-        if (dictionaryCache.size >= DICTIONARY_CACHE_MAX) {
-            const firstKey = dictionaryCache.keys().next().value;
-            dictionaryCache.delete(firstKey);
-        }
+        const result = { valid: isValid, definition };
+        if (dictionaryCache.size >= DICTIONARY_CACHE_MAX) dictionaryCache.delete(dictionaryCache.keys().next().value);
         dictionaryCache.set(lowerWord, result);
         return result;
     } catch (e) {
@@ -236,6 +257,6 @@ module.exports = {
     isWordChainEnabled, getWordChainMode, setWordChainEnabled, getWordChainState,
     updateWordChainState, getWordHistory, addWordHistory, clearWordChainGame,
     lookupVietnameseWord, checkWordChainDeadEnd, getViSyllables,
-    isValidEnglishWord, lookupEnglishWord,
+    isValidEnglishWord, lookupEnglishWord, isValidVietnameseWord,
     voteskipMap, wordDefinitionCache
 };
