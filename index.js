@@ -1,3 +1,4 @@
+require('./src/discord_logger');
 const { Zalo, ThreadType, Reactions } = require('zca-js');
 const fs = require('fs');
 const werewolf = require('./werewolf/index.js');
