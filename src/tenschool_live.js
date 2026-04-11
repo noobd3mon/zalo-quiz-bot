@@ -150,17 +150,34 @@ async function checkAndNotify(api, db) {
     }
 }
 
+let pollingIntervalId = null;
+
 function startPolling(api, db, intervalMs = 3 * 60 * 1000) {
+    // Clear previous polling interval if any (prevents stacking on reconnect)
+    if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+        pollingIntervalId = null;
+    }
+
     console.log(`[TenSchool Live] Bắt đầu chạy ngầm kiểm tra Live Stream mỗi ${intervalMs / 1000} giây.`);
-    
+
     // Gọi thử luôn 1 lần khi start
     checkAndNotify(api, db).catch(() => {});
-    
-    setInterval(() => {
+
+    pollingIntervalId = setInterval(() => {
         checkAndNotify(api, db);
     }, intervalMs);
 }
 
+function stopPolling() {
+    if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+        pollingIntervalId = null;
+        console.log("[TenSchool Live] Đã dừng polling.");
+    }
+}
+
 module.exports = {
-    startPolling
+    startPolling,
+    stopPolling
 };

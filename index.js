@@ -778,11 +778,42 @@ async function handleMessage(api, message) {
 // ---------------------------------------------------------
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
-const BASE_RECONNECT_DELAY = 1000;
-const MAX_RECONNECT_DELAY = 60000; // Max 60s
+const BASE_RECONNECT_DELAY = 5000;  // 5s base — avoid rapid reconnect storm
+const MAX_RECONNECT_DELAY = 60000;  // Max 60s
+
+// Track current state to clean up before reconnect
+let currentApi = null;
+let reconnectTimerId = null;
+let isReconnecting = false;  // Guard against concurrent reconnect calls
+
+function cleanupCurrentConnection() {
+    // Stop pending reconnect timer
+    if (reconnectTimerId) {
+        clearTimeout(reconnectTimerId);
+        reconnectTimerId = null;
+    }
+    // Stop TenSchool polling
+    if (tenschoolLive.stopPolling) {
+        tenschoolLive.stopPolling();
+    }
+    // Remove all listeners from old API and stop listener
+    if (currentApi && currentApi.listener) {
+        currentApi.listener.removeAllListeners('message');
+        currentApi.listener.removeAllListeners('reaction');
+        currentApi.listener.removeAllListeners('closed');
+        currentApi.listener.removeAllListeners('error');
+        try { currentApi.listener.stop(); } catch (e) {}
+    }
+    currentApi = null;
+}
 
 async function startBot() {
+    isReconnecting = false;  // Allow future reconnects
+
     try {
+        // Clean up any previous connection first
+        cleanupCurrentConnection();
+
         await db.initDB();
 
         let cookieData = config.ZALO.cookie;
@@ -795,35 +826,13 @@ async function startBot() {
 
         const zalo = new Zalo({ selfListen: false, checkUpdate: true, logging: true });
         const api = await zalo.login(credentials);
+        currentApi = api;
         console.log("✅ Đăng nhập Zalo Bot thành công!");
         reconnectAttempts = 0;
 
         werewolf.init(api, db.runQuery, db.getQuery, db.allQuery);
         tenschoolLive.startPolling(api, db);
         api.listener.start();
-
-        // ── AUTO KEEP-ALIVE PING ──
-        const KEEP_ALIVE_URL = 'http://cungtienbo.ddns.net/online_bot';
-        const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000; // 5 phút
-        async function pingKeepAlive() {
-            try {
-                const http = require('http');
-                await new Promise((resolve, reject) => {
-                    const req = http.get(KEEP_ALIVE_URL, { timeout: 10000 }, (res) => {
-                        res.resume(); // drain response
-                        resolve(res.statusCode);
-                    });
-                    req.on('error', reject);
-                    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-                });
-                console.log(`💓 Keep-alive ping OK → ${KEEP_ALIVE_URL}`);
-            } catch (e) {
-                console.warn(`⚠️ Keep-alive ping thất bại: ${e.message}`);
-            }
-        }
-        // Ping ngay lập tức khi bot online, sau đó mỗi 5 phút
-        pingKeepAlive();
-        setInterval(pingKeepAlive, KEEP_ALIVE_INTERVAL);
 
         api.listener.on('message', (message) => addToQueue(api, message));
 
@@ -848,19 +857,26 @@ async function startBot() {
 }
 
 function scheduleReconnect() {
+    // Guard: only allow one reconnect to be scheduled at a time
+    if (isReconnecting) return;
+    isReconnecting = true;
+
+    // Clean up current connection immediately to prevent further events
+    cleanupCurrentConnection();
+
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         console.error(`❌ Đạt tối đa ${MAX_RECONNECT_ATTEMPTS} lần thử kết nối. Dừng lại!`);
         return;
     }
 
     reconnectAttempts++;
-    // Exponential backoff with jitter: base * 2^attempts + random 0-500ms
+    // Exponential backoff with jitter: base * 2^attempts + random 0-1000ms
     const baseDelay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
-    const jitter = Math.floor(Math.random() * 500);
+    const jitter = Math.floor(Math.random() * 1000);
     const delay = baseDelay + jitter;
 
-    console.log(`⏳ Thử kết nối lại sau ${delay/1000}s (Lần ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-    setTimeout(startBot, delay);
+    console.log(`⏳ Thử kết nối lại sau ${(delay/1000).toFixed(1)}s (Lần ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+    reconnectTimerId = setTimeout(startBot, delay);
 }
 
 const shutdown = async () => {
