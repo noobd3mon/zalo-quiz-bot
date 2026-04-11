@@ -802,6 +802,29 @@ async function startBot() {
         tenschoolLive.startPolling(api, db);
         api.listener.start();
 
+        // ── AUTO KEEP-ALIVE PING ──
+        const KEEP_ALIVE_URL = 'http://cungtienbo.ddns.net/online_bot';
+        const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000; // 5 phút
+        async function pingKeepAlive() {
+            try {
+                const http = require('http');
+                await new Promise((resolve, reject) => {
+                    const req = http.get(KEEP_ALIVE_URL, { timeout: 10000 }, (res) => {
+                        res.resume(); // drain response
+                        resolve(res.statusCode);
+                    });
+                    req.on('error', reject);
+                    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+                });
+                console.log(`💓 Keep-alive ping OK → ${KEEP_ALIVE_URL}`);
+            } catch (e) {
+                console.warn(`⚠️ Keep-alive ping thất bại: ${e.message}`);
+            }
+        }
+        // Ping ngay lập tức khi bot online, sau đó mỗi 5 phút
+        pingKeepAlive();
+        setInterval(pingKeepAlive, KEEP_ALIVE_INTERVAL);
+
         api.listener.on('message', (message) => addToQueue(api, message));
 
         api.listener.on('reaction', async (reactionEvent) => {

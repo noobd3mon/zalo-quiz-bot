@@ -113,7 +113,7 @@ async function createGame(groupId) {
     if (game && game.state !== 'NONE' && game.state !== 'END') return false;
 
     await db.runQuery(
-        "INSERT INTO bot_ww_games (group_id, state) VALUES (?, 'NEW_GAME') ON DUPLICATE KEY UPDATE state = 'NEW_GAME', day_count = 0, timer_ends_at = NULL, winner = NULL, werewolf_group_id = NULL",
+        "INSERT INTO bot_ww_games (group_id, state, created_at) VALUES (?, 'NEW_GAME', NOW()) ON DUPLICATE KEY UPDATE state = 'NEW_GAME', day_count = 0, timer_ends_at = NULL, winner = NULL, werewolf_group_id = NULL, created_at = NOW()",
         [groupId]
     );
     await db.runQuery("DELETE FROM bot_ww_players WHERE group_id = ?", [groupId]);
